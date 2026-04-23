@@ -62,17 +62,22 @@ The `manifest.json` provides high-level context for the viewer and acts as the *
   "version": "1.0.0",
   "created_at_utc": 1770825000,
   "description": "Exported field scans for transit.",
-  "blocks_hash": "sha256_hex_hash_of_blocks.jsonl_file"
+  "blocks_hash": "sha256_hex_hash_of_blocks.jsonl_file",
+  "native_continuity_gap_seconds": 3600
 }
 ```
 
 The exporter generates a `manifest.sig` by signing the `manifest.json`. Because `manifest.json` contains the exact SHA-256 `blocks_hash` of the ledger, a single signature secures both the metadata (preventing version downgrade attacks) and the entire evidence ledger.
 
-When a new record (or batch of records) is added to the `.luku` file by a mobile app, API, or investigator, a new "Archive Block" is created. This block cryptographically links to the previous block, ensuring that the historical context of the file cannot be retroactively altered or re-ordered. 
+**`native_continuity_gap_seconds`**: An optional field that defines the maximum permitted gap between consecutive `environment` records from the same device. If this gap is exceeded, the verifier MAY (if requested via `require_continuity`) mark the verification as failed. This value is used by readers and SDKs to enforce forensic continuity policies without needing to hardcode thresholds for every product. It is primarily applied to `environment` telemetry to ensure no significant gaps in monitoring occurred.
+
+When a new record (or batch of records) is added to the `.luku` file by a mobile app, API, or investigator, a new "Archive Block" is created. This block cryptographically links to the previous block, ensuring that the historical context of the file cannot be retroactively altered or re-ordered.
+
+An exporter MAY also intentionally start a new archive block when the real-time gap between consecutive native device records exceeds a product-defined continuity threshold, even if the device signature chain itself remains intact. This preserves forensic readability for power-loss or out-of-sync periods without redefining the underlying cryptographic continuity rules.
 
 Each block is appended as a single, newline-terminated JSON object string inside `blocks.jsonl`. *Note: Because NDJSON relies on newlines for record separation, all binary data, including certificates and signatures, MUST be strictly Base64 encoded without line breaks.*
 
-**Streaming Limit Constraint:** To prevent memory exhaustion during parsing, an individual block line MUST NOT exceed **1,000 records**. If an exporter (like a GuardCard) needs to dump 50,000 telemetry points, it MUST chunk the export into 50 sequential blocks.
+**Streaming Constraint:** Parsers SHOULD process `blocks.jsonl` incrementally and MAY apply implementation-specific safeguards for very large blocks, but the `.luku` format itself does **not** require a continuous signed chain to be split at a fixed record count. Exporters SHOULD keep a continuous native chain in the same archive block unless they are intentionally starting a new block for a real continuity boundary or another explicitly documented archive operation.
 
 **Single Device Constraint:** Each block MUST reference exactly one device identity. Evidence from multiple devices MUST be represented as separate blocks. This ensures that the attestation and heartbeat certificate chains provided in the block header apply consistently to all records within the batch.
 
