@@ -67,6 +67,8 @@ The `manifest.json` provides high-level context for the viewer and acts as the *
 }
 ```
 
+**Archive Version Compatibility:** Writers SHOULD emit the full semantic version string (for example `1.0.0`). Verifiers SHOULD continue to accept the legacy archive-level value `1.0` as equivalent to `1.0.0` for backward compatibility with previously exported evidence packages.
+
 The exporter generates a `manifest.sig` by signing the `manifest.json`. Because `manifest.json` contains the exact SHA-256 `blocks_hash` of the ledger, a single signature secures both the metadata (preventing version downgrade attacks) and the entire evidence ledger.
 
 **`native_continuity_gap_seconds`**: An optional field that defines the maximum permitted gap between consecutive `environment` records from the same device. If this gap is exceeded, the verifier MAY (if requested via `require_continuity`) mark the verification as failed. This value is used by readers and SDKs to enforce forensic continuity policies without needing to hardcode thresholds for every product. It is primarily applied to `environment` telemetry to ensure no significant gaps in monitoring occurred.
@@ -582,6 +584,8 @@ To ensure deterministic signature verification across all SDKs, verifiers, and f
 If a field-specific rule conflicts with a generic serialization rule, the field-specific rule defined by that record schema takes precedence.
 
 ## Versioning & Compatibility
+
+**Archive Version Compatibility:** Writers SHOULD emit the full semantic version string (for example `1.0.0`). Verifiers SHOULD continue to accept the legacy archive-level value `1.0` as equivalent to `1.0.0` for backward compatibility with previously exported evidence packages.
 
 ### 1. The "SemVer" Rule for `.luku`
 The protocol uses Semantic Versioning (`Major.Minor.Patch`) inside the `manifest.json` and record payloads.
