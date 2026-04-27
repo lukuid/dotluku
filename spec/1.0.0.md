@@ -83,6 +83,19 @@ Each block is appended as a single, newline-terminated JSON object string inside
 
 **Single Device Constraint:** Each block MUST reference exactly one device identity. Evidence from multiple devices MUST be represented as separate blocks. This ensures that the attestation and heartbeat certificate chains provided in the block header apply consistently to all records within the batch.
 
+### Record Envelope Projection
+
+For realtime verification flows, a producer MAY project a single record into a standalone **record envelope** object. A record envelope is not a new record type and does not change the archive schema version. It is simply one forensic record carried together with the minimum trust material required to verify that record independently of archive-level continuity.
+
+A conforming record envelope MUST include:
+
+*   the `device` block (`device_id`, `public_key`)
+*   the DAC trust material required for device attestation (`attestation_dac_der`, relevant intermediates, and `attestation_root_fingerprint`)
+*   the heartbeat trust material required for trusted-time verification (`heartbeat_slac_der`, relevant heartbeat intermediates, and `heartbeat_root_fingerprint`)
+*   exactly one forensic record payload, including its native signature material and any record-local `identity` or `external_identity` fields required by that record type
+
+This projection allows SDKs or ingest pipelines to verify a single record or envelope in realtime before a full `.luku` archive is assembled. Envelope verification proves the cryptographic validity and trust state of that one record, but it does **not** by itself prove archive-level ordering, append-only block continuity, or complete ledger history.
+
 ### Archive Ledger Structure (`blocks.jsonl`)
 
 Each line in `blocks.jsonl` is a block object.
@@ -637,6 +650,8 @@ At minimum this includes checking:
 *   any protocol-defined synchronization window constraints
 
 If these checks fail, the verifier MUST mark the record as invalid or high-risk according to policy.
+
+> **Envelope Verification Scope:** An SDK or verifier MAY validate a standalone record envelope using the same record-signature, DAC, and heartbeat rules described above. In that mode, the verifier MUST treat the result as **record-level verification only** and MUST NOT imply that block-chain continuity, manifest integrity, or full archive sequencing were evaluated.
 
 ### 5. Continuity & Sequence Audit
 
