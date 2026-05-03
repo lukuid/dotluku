@@ -8,8 +8,8 @@ The canonical specification repository for the `.luku` forensic evidence format.
 
 ## Specification
 
-- Current stable version: [1.0.0](spec/1.0.0.md)
-- Latest working version: [latest](spec/latest.md)
+- Current stable version: 1.0.0
+- Read the Spec: [LUKU.md](LUKU.md)
 
 ## What this repository contains
 
