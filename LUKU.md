@@ -245,7 +245,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "sha256_of_factory_dac",
-      "canonical_string": "LUK-1005-EU:base64_device_public_key:read:AR-1.5.0:4501:marketplace_challenge_token_xyz:none:none:FDX-B:981098109810981:none:38.5:120000000:1770823456:sha256_of_factory_dac:LUKUID-1770823456-4501-981098109810981:<hidden_metrics_keys>:1.0.0:",
+      "canonical_string": "LUK-1005-EU:base64_device_public_key:scan:LUKUID-1770823456-4501-981098109810981:4501:1770823456:120000000:marketplace_challenge_token_xyz:AR-1.5.0:981098109810981:FDX-B:95:100:90:38.50:45.00:-65.00:12.00:5.00:120.00:2.00:3300.00:10.00:11.00:1.00:2000.00:50.00:1.20:1.00:5.00:-2.00:0.00:base64_previous_record_signature",
       "payload": {
         "ctr": 4501,
         "id": "981098109810981",
@@ -306,7 +306,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "base64_previous_record_signature",
-      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:4502:1770823456:350.50:22.40:110:base64_previous_record_signature:bat",
+      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:false:GC-1.0.2:350.50:22.40:45.20:1013.20:110:0.01:0.02:1.00:false:false:base64_previous_record_signature",
       "payload": {
         "ctr": 4502,
         "timestamp_utc": 1770823456,
@@ -339,6 +339,9 @@ The `.luku` format is designed to be fully extensible. New record types and hard
 }
 ```
 
+The canonical string for signing an `environment` record MUST follow this order:
+`device_id:public_key:environment:event_id:ctr:timestamp_utc:uptime_us:battery_percent:vbus_present:lux:temp_c:humidity_pct:pressure_hpa:voc_index:tamper:accel_g_x:accel_g_y:accel_g_z:previous_signature`
+
 #### Biometric Attestation (`biometric`)
 
 The `biometric` record captures a hardware-secured biometric match event. This record type ensures that a biological trait was successfully verified against a local, non-exportable template.
@@ -369,7 +372,7 @@ The `biometric` record captures a hardware-secured biometric match event. This r
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "base64_previous_record_signature",
-      "canonical_string": "LUK-1005-EU:base64_device_public_key:biometric:4503:1770823550:fingerprint:true:99.8:liveness_check_passed,minutiae_count_valid:<hidden_metrics_keys>:base64_previous_record_signature",
+      "canonical_string": "LUK-1005-EU:base64_device_public_key:biometric:1770823550-4503-bio:4503:1770823550:3600001000::GC-1.0.2:fingerprint:true:99.80:liveness_check_passed,minutiae_count_valid:sha256_of_template_index:0.10:0.20:0.30:0.40:0.50:base64_previous_record_signature",
       "payload": {
         "ctr": 4503,
         "timestamp_utc": 1770823550,
@@ -395,8 +398,8 @@ The `biometric` record captures a hardware-secured biometric match event. This r
 *   **template_id_hash**: A SHA-256 hash of the local, non-exportable template index used for the match.
 *   **metrics**: An array of metrics for fraud detection and environmental context.
 
-The canonical string for signing this record MUST follow this order:
-`device_id:public_key:biometric:ctr:timestamp_utc:modality:match:confidence:checks:metrics:previous_signature`
+The canonical string for signing a `biometric` record MUST follow this order:
+`device_id:public_key:biometric:event_id:ctr:timestamp_utc:uptime_us:firmware:modality:match:confidence:checks:template_id_hash:metrics_array:previous_signature`
 
 #### Attested Attachment (`attachment`)
 
