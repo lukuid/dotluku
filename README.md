@@ -10,6 +10,7 @@ The canonical specification repository for the `.luku` forensic evidence format.
 
 - Current stable version: 1.0.0
 - Read the Spec: [LUKU.md](LUKU.md)
+- **Official IANA Media Type:** Registered as [`application/vnd.lukuid.package+zip`](https://www.iana.org/assignments/media-types/application/vnd.lukuid.package+zip). See the [IANA Registry](https://www.iana.org/assignments/media-types/media-types.xhtml).
 
 ## What this repository contains
 
