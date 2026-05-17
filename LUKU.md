@@ -92,7 +92,8 @@ A conforming record envelope MUST include:
 *   the `device` block (`device_id`, `public_key`)
 *   the DAC trust material required for device attestation (`attestation_dac_der`, relevant intermediates, and `attestation_root_fingerprint`)
 *   the heartbeat trust material required for trusted-time verification (`heartbeat_slac_der`, relevant heartbeat intermediates, and `heartbeat_root_fingerprint`)
-*   exactly one forensic record payload, including its native signature material and any record-local `identity` or `external_identity` fields required by that record type
+*   the attestation signatures needed to verify those chains in realtime (`attestation_signature` and, when distinct, `heartbeat_signature`; implementations MAY carry the DAC signature in `identity.signature` for compatibility)
+*   exactly one forensic record payload, including the record's top-level native signature material (`type`, `signature`, `previous_signature`, and `canonical_string`) plus any record-local `identity` or `external_identity` fields required by that record type
 
 This projection allows SDKs or ingest pipelines to verify a single record or envelope in realtime before a full `.luku` archive is assembled. Envelope verification proves the cryptographic validity and trust state of that one record, but it does **not** by itself prove archive-level ordering, append-only block continuity, or complete ledger history.
 
