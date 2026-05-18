@@ -92,7 +92,8 @@ A conforming record envelope MUST include:
 *   the `device` block (`device_id`, `public_key`)
 *   the DAC trust material required for device attestation (`attestation_dac_der`, relevant intermediates, and `attestation_root_fingerprint`)
 *   the heartbeat trust material required for trusted-time verification (`heartbeat_slac_der`, relevant heartbeat intermediates, and `heartbeat_root_fingerprint`)
-*   the attestation signatures needed to verify those chains in realtime (`attestation_signature` and, when distinct, `heartbeat_signature`; implementations MAY carry the DAC signature in `identity.signature` for compatibility)
+*   the attestation signatures needed to verify those chains in realtime (`dac_signature` and, when distinct, `heartbeat_signature`).
+*   when `heartbeat_signature` is present, the envelope MUST also carry the trusted heartbeat timestamp in `identity.last_sync_utc` so the verifier can reconstruct the signed heartbeat payload
 *   exactly one forensic record payload, including the record's top-level native signature material (`type`, `signature`, `previous_signature`, and `canonical_string`) plus any record-local `identity` or `external_identity` fields required by that record type
 
 This projection allows SDKs or ingest pipelines to verify a single record or envelope in realtime before a full `.luku` archive is assembled. Envelope verification proves the cryptographic validity and trust state of that one record, but it does **not** by itself prove archive-level ordering, append-only block continuity, or complete ledger history.
@@ -270,7 +271,8 @@ The `.luku` format is designed to be fully extensible. New record types and hard
         "attestation_root_fingerprint": "sha256_hex_fingerprint",
         "heartbeat_root_fingerprint": "sha256_hex_fingerprint",
         "last_sync_utc": 1770800000,
-        "signature": "base64_heartbeat_signature"
+        "dac_signature": "base64_dac_signature",
+        "heartbeat_signature": "base64_heartbeat_signature"
       }
     }
   ],
