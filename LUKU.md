@@ -309,7 +309,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "base64_previous_record_signature",
-      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:false:GC-1.0.2:350.50:22.40:45.20:1013.20:110:0.01:0.02:1.00:false:false:base64_previous_record_signature",
+      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:85:false:350.50:22.40:45.20:1013.20:30000:110:false:0.01:0.02:1.00:base64_previous_record_signature",
       "payload": {
         "ctr": 4502,
         "timestamp_utc": 1770823456,
@@ -320,7 +320,9 @@ The `.luku` format is designed to be fully extensible. New record types and hard
         "temp_c": 22.4,
         "humidity_pct": 45.2,
         "pressure_hpa": 1013.2,
+        "voc_raw": 30000,
         "voc_index": 110,
+        "battery_percent": 85,
         "accel_g": { "x": 0.01, "y": 0.02, "z": 1.00 },
         "tamper": false,
         "wake_event": false,
@@ -343,7 +345,9 @@ The `.luku` format is designed to be fully extensible. New record types and hard
 ```
 
 The canonical string for signing an `environment` record MUST follow this order:
-`device_id:public_key:environment:event_id:ctr:timestamp_utc:uptime_us:battery_percent:vbus_present:lux:temp_c:humidity_pct:pressure_hpa:voc_index:tamper:accel_g_x:accel_g_y:accel_g_z:previous_signature`
+`device_id:public_key:environment:event_id:ctr:timestamp_utc:uptime_us:battery_percent:vbus_present:lux:temp_c:humidity_pct:pressure_hpa:voc_raw:voc_index:tamper:accel_g_x:accel_g_y:accel_g_z:previous_signature`
+
+If `initial_temp_c` is present, it MUST be appended after `accel_g_z` and before `previous_signature`.
 
 #### Biometric Attestation (`biometric`)
 
