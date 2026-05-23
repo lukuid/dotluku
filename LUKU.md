@@ -92,7 +92,9 @@ A conforming record envelope MUST include:
 *   the `device` block (`device_id`, `public_key`)
 *   the DAC trust material required for device attestation (`attestation_dac_der`, relevant intermediates, and `attestation_root_fingerprint`)
 *   the heartbeat trust material required for trusted-time verification (`heartbeat_slac_der`, relevant heartbeat intermediates, and `heartbeat_root_fingerprint`)
-*   the attestation signatures needed to verify those chains in realtime (`dac_signature` and, when distinct, `heartbeat_signature`).
+*   the detached attestation signatures generated when the record is created and embedded into that record (`dac_signature` and, when distinct, `heartbeat_signature`).
+*   `dac_signature` MUST sign the detached payload `attestation:{device_id}:{public_key}:{ctr}:{id}`
+*   `heartbeat_signature` MUST sign the detached payload `heartbeat:{device_id}:{last_sync_utc}:{ctr}:{id}`
 *   when `heartbeat_signature` is present, the envelope MUST also carry the trusted heartbeat timestamp in `identity.last_sync_utc` so the verifier can reconstruct the signed heartbeat payload
 *   exactly one forensic record payload, including the record's top-level native signature material (`type`, `signature`, `previous_signature`, and `canonical_string`) plus any record-local `identity` or `external_identity` fields required by that record type
 
@@ -242,7 +244,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
   "batch": [
     {
       "type": "scan",
-      "scan_id": "LUKUID-1770823456-4501-981098109810981",
+      "id": "LUKUID-1770823456-4501-981098109810981",
       "version": "1.0.0",
       "alg": "ED25519",
       "signature": "base64_payload_signature",
@@ -304,7 +306,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
   "batch": [
     {
       "type": "environment",
-      "event_id": "1770823456-4502-env",
+      "id": "1770823456-4502-env",
       "version": "1.0.0",
       "alg": "ED25519",
       "signature": "base64_payload_signature",
@@ -334,7 +336,8 @@ The `.luku` format is designed to be fully extensible. New record types and hard
         "dac_serial": "...",
         "slac_serial": "...",
         "last_sync_utc": 1770800000,
-        "signature": "base64_heartbeat_signature"
+        "dac_signature": "base64_dac_signature",
+        "heartbeat_signature": "base64_heartbeat_signature"
       }
     }
   ],
@@ -345,7 +348,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
 ```
 
 The canonical string for signing an `environment` record MUST follow this order:
-`device_id:public_key:environment:event_id:ctr:timestamp_utc:uptime_us:battery_percent:vbus_present:lux:temp_c:humidity_pct:pressure_hpa:voc_raw:voc_index:tamper:accel_g_x:accel_g_y:accel_g_z:previous_signature`
+`device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us:battery_percent:vbus_present:lux:temp_c:humidity_pct:pressure_hpa:voc_raw:voc_index:tamper:accel_g_x:accel_g_y:accel_g_z:previous_signature`
 
 If `initial_temp_c` is present, it MUST be appended after `accel_g_z` and before `previous_signature`.
 
@@ -412,7 +415,7 @@ The canonical string for signing a `biometric` record MUST follow this order:
 
 The `attachment` record acts as a cryptographic wrapper for external files, documents, or endorsements. It is produced by the device's `attest` flow. Instead of embedding large files directly into the ledger, it securely binds the file's SHA-256 checksum to signed device evidence and, optionally, to a specific parent record already present on the device.
 
-Attachments are first-class records within the ledger. They MAY link to a parent record via `parent_record_id`, but this link is optional so an attested attachment can also be added to a `.luku` package later without requiring the parent record to still reside on-device.
+Attachments are first-class records within the ledger. They MAY link to a parent record via `parent_id`, but this link is optional so an attested attachment can also be added to a `.luku` package later without requiring the parent record to still reside on-device.
 
 ```json
 {
@@ -434,8 +437,8 @@ Attachments are first-class records within the ledger. They MAY link to a parent
   "batch": [
     {
       "type": "attachment",
-      "attachment_id": "ATT-999-555",
-      "parent_record_id": "LUKUID-1770823456-4501-981098109810981",
+      "id": "ATT-999-555",
+      "parent_id": "LUKUID-1770823456-4501-981098109810981",
       "timestamp_utc": 1770823465,
       "version": "1.0.0",
       "alg": "ED25519",
@@ -500,7 +503,7 @@ The `location` record is also produced through the device's `attest` flow. Much 
   "batch": [
     {
       "type": "location",
-      "parent_record_id": "LUKUID-1770823456-4501-981098109810981",
+      "parent_id": "LUKUID-1770823456-4501-981098109810981",
       "timestamp_utc": 1770823500,
       "version": "1.0.0",
       "alg": "ED25519",
@@ -530,7 +533,7 @@ The `location` record is also produced through the device's `attest` flow. Much 
 
 The `custody` record is produced through the device's `attest` flow to capture possession or checkpoint state such as placement, handoff, receipt, release, sealing, opening, or inspection. Much like other auxiliary attested records, it MAY link directly to a parent record, but that link is optional. This allows custody evidence to be anchored to a specific prior record when available without mutating the device's native continuity sequence.
 
-`custody` is an auxiliary attested record. It MAY link to a `parent_record_id` and `parent_signature` for contextual anchoring, but it MUST NOT advance native device continuity state or affect native counter audits.
+`custody` is an auxiliary attested record. It MAY link to a `parent_id` and `parent_signature` for contextual anchoring, but it MUST NOT advance native device continuity state or affect native counter audits.
 
 ```json
 {
@@ -552,8 +555,8 @@ The `custody` record is produced through the device's `attest` flow to capture p
   "batch": [
     {
       "type": "custody",
-      "custody_id": "CUST-1770823650-0001",
-      "parent_record_id": "LUKUID-1770823456-4501-981098109810981",
+      "id": "CUST-1770823650-0001",
+      "parent_id": "LUKUID-1770823456-4501-981098109810981",
       "timestamp_utc": 1770823650,
       "version": "1.0.0",
       "alg": "ED25519",
@@ -587,7 +590,7 @@ Suggested constrained values for `payload.event` include `trip_start`, `handoff`
 Suggested constrained values for `payload.status` include `confirmed`, `placed`, `received`, and `released`.
 
 The canonical string for signing this record MUST follow this order:
-`parent_signature:device_id:public_key:custody:custody_id:parent_record_id:timestamp_utc:event:status:context_ref:external_signature`
+`parent_signature:device_id:public_key:custody:id:parent_id:timestamp_utc:event:status:context_ref:external_signature`
 
 ## Canonical Serialization Rules
 
@@ -690,7 +693,7 @@ If these checks fail, the verifier MUST mark the record as invalid or high-risk 
     > **Lukuroot Exception**: The primary LukuID Root CA is implicitly trusted as an external identity root ONLY if the leaf certificate contains OID `1.3.6.1.4.1.65432.1.4` (or includes it in Certificate Policies).
 
     A verifier MUST NOT trust an `external_identity` solely because a chain parses successfully; the root fingerprint MUST match an explicitly trusted external root or the Lukuroot exception rule. Then, verify the `external_identity.signature` using the leaf public key against the expected payload string (e.g., `checksum:merkle:endorser_id`, `lat:lng:endorser_id`, or `event:status:context_ref:endorser_id`). This is used for endorsements such as vet cards, API signers, Apple App Attest, Google platform attestations, or operator custody checkpoints.
-*   If `parent_record_id` is present, verify that it exists in the ledger. If it is absent, treat the record as a standalone attested auxiliary record.
+*   If `parent_id` is present, verify that it exists in the ledger. If it is absent, treat the record as a standalone attested auxiliary record.
 *   **Hashing Standard**: All `checksum`, `blocks_hash`, and `merkle_root` fields MUST use **SHA-256**.
 *   For physical attachments, the auditor MUST resolve the file path using the first two hex chunks (2 chars each) of the checksum (e.g., a file with hash `a1b2c3d4...` is located at `attachments/a1/b2/a1b2c3d4...`). Verify this physical file matches the `checksum` in the attachment record.
 *   If the file is large, use the `merkle_root` to verify specific data blocks without re-hashing the entire file.
