@@ -266,8 +266,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
         "metrics": [38.5, 45, -65, 12, 5, 120, 2, 3300, 10, 11, 1, 2000, 50, 1.2, 1, 5, -2, 0]
       },
       "identity": {
-        "identity_version": 1,
-        "alg": "ML-DSA-65",
+        "version": 1,
         "dac_serial": "device_attestation_serial",
         "slac_serial": "scan_level_attestation_serial",
         "attestation_root_fingerprint": "sha256_hex_fingerprint",
@@ -331,8 +330,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
         "vbus_present": false
       },
       "identity": {
-        "identity_version": 1,
-        "alg": "ML-DSA-65",
+        "version": 1,
         "dac_serial": "...",
         "slac_serial": "...",
         "last_sync_utc": 1770800000,
@@ -392,6 +390,14 @@ The `biometric` record captures a hardware-secured biometric match event. This r
         "checks": ["liveness_check_passed", "minutiae_count_valid"],
         "template_id_hash": "sha256_of_template_index",
         "metrics": [0.1, 0.2, 0.3, 0.4, 0.5]
+      },
+      "identity": {
+        "version": 1,
+        "dac_serial": "...",
+        "slac_serial": "...",
+        "last_sync_utc": 1770800000,
+        "dac_signature": "base64_dac_signature",
+        "heartbeat_signature": "base64_heartbeat_signature"
       }
     }
   ],
