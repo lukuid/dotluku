@@ -93,7 +93,7 @@ A conforming record envelope MUST include:
 *   the DAC trust material required for device attestation (`attestation_dac_der`, relevant intermediates, and `attestation_root_fingerprint`)
 *   the heartbeat trust material required for trusted-time verification (`heartbeat_slac_der`, relevant heartbeat intermediates, and `heartbeat_root_fingerprint`)
 *   the detached attestation signatures generated when the record is created and embedded into that record (`dac_signature` and, when distinct, `heartbeat_signature`).
-*   `dac_signature` MUST sign the detached payload `attestation:{device_id}:{public_key}:{ctr}:{id}`
+*   `dac_signature` MUST sign the detached payload `attestation:{device_id}:{public_key}:{ctr}:{vendor}:{id}`
 *   `heartbeat_signature` MUST sign the detached payload `heartbeat:{device_id}:{last_sync_utc}:{ctr}:{id}`
 *   when `heartbeat_signature` is present, the envelope MUST also carry the trusted heartbeat timestamp in `identity.last_sync_utc` so the verifier can reconstruct the signed heartbeat payload
 *   exactly one forensic record payload, including the record's top-level native signature material (`type`, `signature`, `previous_signature`, and `canonical_string`) plus any record-local `identity` or `external_identity` fields required by that record type
@@ -230,6 +230,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
   "timestamp_utc": 1770823456,
   "previous_block_hash": null,
   "device": {
+    "vendor": "LUKUID",
     "device_id": "LUK-1005-EU",
     "public_key": "base64_device_public_key"
   },
@@ -291,6 +292,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
   "timestamp_utc": 1770823456,
   "previous_block_hash": "sha256_hex_block_hash_for_block_0",
   "device": {
+    "vendor": "LUKUID",
     "device_id": "GC-2005-EU",
     "public_key": "base64_device_public_key"
   },
@@ -362,6 +364,7 @@ The `biometric` record captures a hardware-secured biometric match event. This r
   "timestamp_utc": 1770823550,
   "previous_block_hash": "sha256_hex_block_hash_for_block_1",
   "device": {
+    "vendor": "LUKUID",
     "device_id": "LUK-1005-EU",
     "public_key": "base64_device_public_key"
   },
@@ -429,6 +432,7 @@ Attachments are first-class records within the ledger. They MAY link to a parent
   "timestamp_utc": 1770823465,
   "previous_block_hash": "sha256_hex_block_hash_for_block_2",
   "device": {
+    "vendor": "LUKUID",
     "device_id": "LUK-1005-EU",
     "public_key": "base64_device_public_key"
   },
@@ -495,6 +499,7 @@ The `location` record is also produced through the device's `attest` flow. Much 
   "timestamp_utc": 1770823500,
   "previous_block_hash": "sha256_hex_block_hash_for_block_3",
   "device": {
+    "vendor": "LUKUID",
     "device_id": "LUK-1005-EU",
     "public_key": "base64_device_public_key"
   },
