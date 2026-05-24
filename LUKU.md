@@ -89,7 +89,7 @@ For realtime verification flows, a producer MAY project a single record into a s
 
 A conforming record envelope MUST include:
 
-*   the `device` block (`device_id`, `public_key`)
+*   the `device` block (`vendor`, `device_id`, `public_key`)
 *   the DAC trust material required for device attestation (`attestation_dac_der`, relevant intermediates, and `attestation_root_fingerprint`)
 *   the heartbeat trust material required for trusted-time verification (`heartbeat_slac_der`, relevant heartbeat intermediates, and `heartbeat_root_fingerprint`)
 *   the detached attestation signatures generated when the record is created and embedded into that record (`dac_signature` and, when distinct, `heartbeat_signature`).
