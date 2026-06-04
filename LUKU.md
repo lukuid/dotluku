@@ -312,7 +312,7 @@ The `.luku` format is designed to be fully extensible. New record types and hard
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "base64_previous_record_signature",
-      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:85:false:350.50:22.40:45.20:1013.20:30000:110:false:0.01:0.02:1.00:base64_previous_record_signature",
+      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:85:false:350.50:22.40:45.20:1013.20:30000:110:false:0.01:0.02:1.00:60.169900:24.938400:4.50:12.30:1.25:271.50:9:3:LTE:4g:Example Mobile:244:05:abcd:123456:-71:-95:-10.50:18.20:false:base64_previous_record_signature",
       "payload": {
         "ctr": 4502,
         "timestamp_utc": 1770823456,
@@ -329,7 +329,27 @@ The `.luku` format is designed to be fully extensible. New record types and hard
         "accel_g": { "x": 0.01, "y": 0.02, "z": 1.00 },
         "tamper": false,
         "wake_event": false,
-        "vbus_present": false
+        "vbus_present": false,
+        "gps_lat": 60.1699,
+        "gps_lng": 24.9384,
+        "gps_accuracy_m": 4.5,
+        "gps_altitude_m": 12.3,
+        "gps_speed_mps": 1.25,
+        "gps_heading_deg": 271.5,
+        "gps_satellites": 9,
+        "gps_fix_quality": 3,
+        "mobile_network": "LTE",
+        "mobile_radio": "4g",
+        "mobile_operator": "Example Mobile",
+        "mobile_mcc": "244",
+        "mobile_mnc": "05",
+        "mobile_lac": "abcd",
+        "mobile_cell_id": "123456",
+        "mobile_rssi_dbm": -71,
+        "mobile_rsrp_dbm": -95,
+        "mobile_rsrq_db": -10.5,
+        "mobile_sinr_db": 18.2,
+        "mobile_roaming": false
       },
       "identity": {
         "version": 1,
@@ -348,9 +368,9 @@ The `.luku` format is designed to be fully extensible. New record types and hard
 ```
 
 The canonical string for signing an `environment` record MUST follow this order:
-`device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us:battery_percent:vbus_present:lux:temp_c:humidity_pct:pressure_hpa:voc_raw:voc_index:tamper:accel_g_x:accel_g_y:accel_g_z:previous_signature`
+`device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us:battery_percent:vbus_present:lux:temp_c:humidity_pct:pressure_hpa:voc_raw:voc_index:tamper:accel_g_x:accel_g_y:accel_g_z:gps_lat:gps_lng:gps_accuracy_m:gps_altitude_m:gps_speed_mps:gps_heading_deg:gps_satellites:gps_fix_quality:mobile_network:mobile_radio:mobile_operator:mobile_mcc:mobile_mnc:mobile_lac:mobile_cell_id:mobile_rssi_dbm:mobile_rsrp_dbm:mobile_rsrq_db:mobile_sinr_db:mobile_roaming:previous_signature`
 
-If `initial_temp_c` is present, it MUST be appended after `accel_g_z` and before `previous_signature`.
+If `initial_temp_c` is present, it MUST be appended after `accel_g_z` and before `gps_lat`. The GPS and mobile canonical slots MUST always be present in the order above. When a field is unavailable, its canonical component MUST be the empty string.
 
 #### Biometric Attestation (`biometric`)
 
