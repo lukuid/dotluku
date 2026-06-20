@@ -100,6 +100,8 @@ A conforming record envelope MUST include:
 
 This projection allows SDKs or ingest pipelines to verify a single record or envelope in realtime before a full `.luku` archive is assembled. Envelope verification proves the cryptographic validity and trust state of that one record, but it does **not** by itself prove archive-level ordering, append-only block continuity, or complete ledger history.
 
+**DAC Lifetime Rule:** Device Attestation Certificates identify the device birth/provisioning trust state, not the lifetime of every later record. A verifier MUST validate the DAC chain against the DAC leaf certificate's `notBefore` timestamp plus a 60 minute grace window. A record produced after the DAC leaf or issuer certificate's `notAfter` timestamp remains valid if the DAC chain was valid at that DAC anchor, the DAC has not been revoked through the CRL, the record signature is valid, and the trusted heartbeat/time checks pass. Verifiers MUST NOT use the record timestamp as the DAC certificate validity time.
+
 ### Archive Ledger Structure (`blocks.jsonl`)
 
 Each line in `blocks.jsonl` is a block object.
@@ -680,6 +682,8 @@ Before checking cryptographic signatures, the viewer MUST ensure the file itself
 ### 3. Root of Trust & Chain Validation
 *   Compare root fingerprints against the LukuID Offline Root (ML-DSA-65).
 *   Validate the dual certificate chains (DAC and SLAC) using certificates from the `batch` or `identity` objects.
+    *   DAC chain validity is evaluated at the DAC leaf `notBefore + 60 minutes` anchor and remains subject to CRL revocation.
+    *   SLAC/heartbeat chain validity remains tied to trusted heartbeat and record-time rules.
 *   **Hard-Pinned Roots**: SDKs and viewers MUST ship with the LukuID Offline Root fingerprints hardcoded. The viewer MUST display a massive red warning if a `.luku` file utilizes an "Unknown/External Root" that isn't explicitly green-listed by the auditor.
 
 ### 4. Time Verification Rule
