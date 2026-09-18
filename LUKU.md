@@ -663,7 +663,7 @@ The `location` record is also produced through the device's `attest` flow. Much 
       "alg": "ED25519",
       "signature": "base64_location_signature_by_device",
       "parent_signature": "base64_linked_parent_signature_or_blank",
-      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:location:LUKUID-1770823456-4501-981098109810981:1770823500:60.1699:24.9384:base64_external_signature",
+      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:location:LUKUID-1770823456-4501-981098109810981:1770823500:60.169900:24.938400:base64_external_signature",
       "lat": 60.1699,
       "lng": 24.9384,
       "external_identity": {
@@ -769,7 +769,7 @@ To ensure deterministic signature verification across all SDKs, verifiers, and f
 *   **Empty & Omitted Fields**: If an optional string field is omitted or null, it MUST be represented as an empty string (i.e., adjacent colons `::`).
 *   **No Silent Numeric Defaults**: Null values for strings become empty strings. Null or omitted numeric values MUST be handled exactly as defined by the specific record schema. They MUST NOT silently default to `0` (or any other sane-looking default) unless that schema explicitly requires it. This is intentional, not an oversight: for fields where `0` is itself a valid real-world value (e.g. `gps_lat`/`gps_lng` — `0,0` is a real coordinate — or `battery_percent`), defaulting an absent reading to `0` would make "the device did not report this field" cryptographically indistinguishable from "the device reported exactly zero," destroying the forensic value of the signature.
 *   **Booleans**: Booleans MUST be serialized as the lowercase strings `true` or `false`.
-*   **Floats**: Floating-point numbers MUST be formatted to exactly two decimal places (e.g., `350.50`, `22.40`), using a period (`.`) as the decimal separator.
+*   **Floats**: Floating-point numbers MUST be formatted to exactly two decimal places (e.g., `350.50`, `22.40`), using a period (`.`) as the decimal separator. **Exception — geospatial coordinates**: `gps_lat`, `gps_lng`, `lat`, and `lng` MUST be formatted to exactly six decimal places (e.g., `60.169900`, `24.938400`) instead. Two decimal degrees is only ~1.1km of precision, too coarse for forensic location evidence; six decimal places gives sub-meter precision. This is the only field-name-based exception to the two-decimal rule.
 *   **Arrays**: Arrays of strings or numbers MUST be joined by commas (`,`) with NO spaces (e.g., `1,2,3` or `liveness_check,minutiae_valid`). A numeric array's elements MUST each individually follow the Floats rule above (e.g. `38.50,45.00,-65.00`), even where an element's underlying value is a whole number.
 *   **Whitespace**: NO extra whitespace, tabs, or padding is permitted anywhere in the serialized fields.
 *   **Delimiter Escaping**: Colons (`:`) within individual data fields are strictly forbidden by the schema to prevent delimiter collision. If a field intrinsically requires a colon (such as a MAC address), it MUST be sanitized or encoded (e.g., hex without colons) before being added to the payload.
