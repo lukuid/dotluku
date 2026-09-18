@@ -417,7 +417,7 @@ This keeps `scan` a single, extensible native record type instead of requiring a
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "base64_previous_record_signature",
-      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:85:false:350.50:22.40:45.20:1013.20:30000:110:false:0.01:0.02:1.00:60.169900:24.938400:4.50:12.30:1.25:271.50:9:3:LTE:4g:Example Mobile:244:05:abcd:123456:-71:-95:-10.50:18.20:false:base64_previous_record_signature",
+      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:0.01:0.02:1.00:85:4.50:12.30:3:271.50:60.169900:24.938400:9:1.25:45.20:350.50:123456:abcd:244:05:LTE:Example Mobile:4g:false:-95:-10.50:-71:18.20:1013.20:false:22.40:false:110:30000:base64_previous_record_signature",
       "payload": {
         "ctr": 4502,
         "timestamp_utc": 1770823456,
@@ -472,10 +472,15 @@ This keeps `scan` a single, extensible native record type instead of requiring a
 }
 ```
 
-The canonical string for signing an `environment` record MUST follow this order:
-`device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us:battery_percent:vbus_present:lux:temp_c:humidity_pct:pressure_hpa:voc_raw:voc_index:tamper:accel_g_x:accel_g_y:accel_g_z:gps_lat:gps_lng:gps_accuracy_m:gps_altitude_m:gps_speed_mps:gps_heading_deg:gps_satellites:gps_fix_quality:mobile_network:mobile_radio:mobile_operator:mobile_mcc:mobile_mnc:mobile_lac:mobile_cell_id:mobile_rssi_dbm:mobile_rsrp_dbm:mobile_rsrq_db:mobile_sinr_db:mobile_roaming:previous_signature`
+The canonical string for signing an `environment` record follows the general Field Order rule:
 
-If `initial_temp_c` is present, it MUST be appended after `accel_g_z` and before `gps_lat`. The GPS and mobile canonical slots MUST always be present in the order above. When a field is unavailable, its canonical component MUST be the empty string.
+Structural prefix: `device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us`
+
+Content fields, alphabetical: `accel_g_x, accel_g_y, accel_g_z, battery_percent, gps_accuracy_m, gps_altitude_m, gps_fix_quality, gps_heading_deg, gps_lat, gps_lng, gps_satellites, gps_speed_mps, humidity_pct, lux, mobile_cell_id, mobile_lac, mobile_mcc, mobile_mnc, mobile_network, mobile_operator, mobile_radio, mobile_roaming, mobile_rsrp_dbm, mobile_rsrq_db, mobile_rssi_dbm, mobile_sinr_db, pressure_hpa, tamper, temp_c, vbus_present, voc_index, voc_raw`
+
+Structural suffix: `previous_signature`
+
+If `initial_temp_c` is present, it takes its natural alphabetical position (between `humidity_pct` and `lux`) — no special-case insertion rule is needed. The GPS and mobile canonical slots MUST always be present at their alphabetical position. When a field is unavailable, its canonical component MUST be the empty string.
 
 #### Biometric Attestation (`biometric`)
 
@@ -508,7 +513,7 @@ The `biometric` record captures a hardware-secured biometric match event. This r
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "base64_previous_record_signature",
-      "canonical_string": "LUK-1005-EU:base64_device_public_key:biometric:1770823550-4503-bio:4503:1770823550:3600001000::GC-1.0.2:fingerprint:true:99.80:liveness_check_passed,minutiae_count_valid:sha256_of_template_index:0.10:0.20:0.30:0.40:0.50:base64_previous_record_signature",
+      "canonical_string": "LUK-1005-EU:base64_device_public_key:biometric:1770823550-4503-bio:4503:1770823550:3600001000:GC-1.0.2:liveness_check_passed,minutiae_count_valid:99.80:true:0.10,0.20,0.30,0.40,0.50:fingerprint:sha256_of_template_index:base64_previous_record_signature",
       "payload": {
         "ctr": 4503,
         "timestamp_utc": 1770823550,
@@ -542,8 +547,13 @@ The `biometric` record captures a hardware-secured biometric match event. This r
 *   **template_id_hash**: A SHA-256 hash of the local, non-exportable template index used for the match.
 *   **metrics**: An array of metrics for fraud detection and environmental context.
 
-The canonical string for signing a `biometric` record MUST follow this order:
-`device_id:public_key:biometric:event_id:ctr:timestamp_utc:uptime_us:firmware:modality:match:confidence:checks:template_id_hash:metrics_array:previous_signature`
+The canonical string for signing a `biometric` record follows the general Field Order rule:
+
+Structural prefix: `device_id:public_key:biometric:event_id:ctr:timestamp_utc:uptime_us:firmware`
+
+Content fields, alphabetical: `checks, confidence, match, metrics, modality, template_id_hash`
+
+Structural suffix: `previous_signature`
 
 #### Attested Attachment (`attachment`)
 
@@ -579,7 +589,7 @@ Attachments are first-class records within the ledger. They MAY link to a parent
       "alg": "ED25519",
       "signature": "base64_attachment_signature_by_device",
       "parent_signature": "base64_linked_parent_signature_or_blank",
-      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:attachment:ATT-999-555:LUKUID-1770823456-4501-981098109810981:1770823465:application/pdf:EU Veterinary Health Certificate:sha256_hash_of_pdf::base64_external_signature",
+      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:attachment:ATT-999-555:LUKUID-1770823456-4501-981098109810981:1770823465:sha256_hash_of_pdf::application/pdf:EU Veterinary Health Certificate:base64_external_signature",
       "title": "EU Veterinary Health Certificate",
       "mime": "application/pdf",
       "checksum": "sha256_hash_of_pdf",
@@ -601,6 +611,14 @@ Attachments are first-class records within the ledger. They MAY link to a parent
 }
 ```
 
+The canonical string for signing an `attachment` record follows the general Field Order rule:
+
+Structural prefix: `parent_signature:device_id:public_key:attachment:id:parent_id:timestamp_utc`
+
+Content fields, alphabetical: `checksum, merkle_root, mime, title`
+
+Structural suffix: `external_signature`
+
 The `root_fingerprint` within the `external_identity` ensures that the viewer can independently identify and approve the Root CA of the third party that generated the `cert_chain_der` without ambiguity.
 
 > **Record vs Block Integrity Note:** The inner `signature` inside an `attachment`, `location`, or `custody` record is **always** signed by the device itself through the `attest` flow. The optional `external_identity` is how third-party trust is carried, whether that signer is a veterinarian, an API operator, Google, or Apple. At the block level, integrity is provided by the deterministic `block_hash` and `previous_block_hash` chain, while the full ledger is sealed by `manifest.sig`.
@@ -608,7 +626,7 @@ The `root_fingerprint` within the `external_identity` ensures that the viewer ca
 > **External Endorsement Signatures:** If an `external_identity` is supplied, it MUST provide its own `signature` inside the `external_identity` block. This external signature is expected to match the payload contents:
 > *   For `location`: `lat:lng:endorser_id`
 > *   For `attachment`: `checksum:merkle_root:endorser_id` (fields are blank or provided according to what is present in the payload, e.g., `sha256_hash_of_pdf::VET-987654` if `merkle_root` is blank).
-> *   For `custody`: `event:status:context_ref:endorser_id` (fields are blank or provided according to what is present in the payload, e.g., `handoff:received:shipment-abc-123:OPS-USER-1`).
+> *   For `custody`: `context_ref:event:status:endorser_id` (fields are blank or provided according to what is present in the payload, e.g., `shipment-abc-123:handoff:received:OPS-USER-1`).
 >
 > The device's canonical payload includes this signature from the external identity if supplied. If not, it is left blank in the canonical string. This allows the same `external_identity` model to represent both traditional third-party endorsements and mobile platform attestations rooted in Apple or Google trust anchors.
 >
@@ -645,7 +663,7 @@ The `location` record is also produced through the device's `attest` flow. Much 
       "alg": "ED25519",
       "signature": "base64_location_signature_by_device",
       "parent_signature": "base64_linked_parent_signature_or_blank",
-      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:location:LUKUID-1770823456-4501-981098109810981:1770823500:60.1699:24.9384::base64_external_signature",
+      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:location:LUKUID-1770823456-4501-981098109810981:1770823500:60.1699:24.9384:base64_external_signature",
       "lat": 60.1699,
       "lng": 24.9384,
       "external_identity": {
@@ -664,6 +682,14 @@ The `location` record is also produced through the device's `attest` flow. Much 
   "block_hash": "sha256_hex_block_hash_for_block_4"
 }
 ```
+
+The canonical string for signing a `location` record follows the general Field Order rule:
+
+Structural prefix: `parent_signature:device_id:public_key:location:parent_id:timestamp_utc`
+
+Content fields, alphabetical: `lat, lng`
+
+Structural suffix: `external_signature`
 
 #### Attested Custody (`custody`)
 
@@ -698,7 +724,7 @@ The `custody` record is produced through the device's `attest` flow to capture p
       "alg": "ED25519",
       "signature": "base64_custody_signature_by_device",
       "parent_signature": "base64_linked_parent_signature_or_blank",
-      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:custody:CUST-1770823650-0001:LUKUID-1770823456-4501-981098109810981:1770823650:handoff:received:shipment-abc-123:base64_external_signature",
+      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:custody:CUST-1770823650-0001:LUKUID-1770823456-4501-981098109810981:1770823650:shipment-abc-123:handoff:received:base64_external_signature",
       "payload": {
         "event": "handoff",
         "status": "received",
@@ -725,8 +751,13 @@ Suggested constrained values for `payload.event` include `trip_start`, `handoff`
 
 Suggested constrained values for `payload.status` include `confirmed`, `placed`, `received`, and `released`.
 
-The canonical string for signing this record MUST follow this order:
-`parent_signature:device_id:public_key:custody:id:parent_id:timestamp_utc:event:status:context_ref:external_signature`
+The canonical string for signing a `custody` record follows the general Field Order rule:
+
+Structural prefix: `parent_signature:device_id:public_key:custody:id:parent_id:timestamp_utc`
+
+Content fields, alphabetical: `context_ref, event, status`
+
+Structural suffix: `external_signature`
 
 ## Canonical Serialization Rules
 
@@ -734,7 +765,7 @@ To ensure deterministic signature verification across all SDKs, verifiers, and f
 
 *   **Encoding**: The string MUST be strictly UTF-8 encoded.
 *   **Delimiter**: Fields are separated by a single colon (`:`).
-*   **Field Order**: The order of fields is strictly defined by the individual record `type` schema and MUST NOT be altered. Where a `type` declares a variable, named field set (e.g. a `scan` `profile`), that variable segment MUST be ordered by strict lexicographic (byte-wise ASCII) sort of the field names, as described for that type; the type's fixed structural fields keep their explicitly defined positions around it.
+*   **Field Order**: Every record `type` (and, for `scan`, every `profile`) defines a fixed **structural prefix** (device/record identity, counters, timestamps, and any per-type structural fields such as `firmware`) and a fixed **structural suffix** (the trailing chain-link field: `previous_signature` for native records, `external_signature` for auxiliary attested records). Both keep the explicit positions documented for that type and MUST NOT be reordered. Between the prefix and suffix, the type's remaining **content fields** MUST be ordered by strict lexicographic (byte-wise ASCII) sort of their field names. This ordering is mechanical, not hand-authored: a type's content-field set is documented as a plain alphabetically-sorted list, so adding a new content field to a future minor revision means inserting it at its natural alphabetical position, not writing a new bespoke order rule.
 *   **Empty & Omitted Fields**: If an optional string field is omitted or null, it MUST be represented as an empty string (i.e., adjacent colons `::`).
 *   **No Silent Numeric Defaults**: Null values for strings become empty strings. Null or omitted numeric values MUST be handled exactly as defined by the specific record schema. They MUST NOT silently default to `0` (or any other sane-looking default) unless that schema explicitly requires it. This is intentional, not an oversight: for fields where `0` is itself a valid real-world value (e.g. `gps_lat`/`gps_lng` — `0,0` is a real coordinate — or `battery_percent`), defaulting an absent reading to `0` would make "the device did not report this field" cryptographically indistinguishable from "the device reported exactly zero," destroying the forensic value of the signature.
 *   **Booleans**: Booleans MUST be serialized as the lowercase strings `true` or `false`.
@@ -830,7 +861,7 @@ If these checks fail, the verifier MUST mark the record as invalid or high-risk 
 *   **Optional External Identity**: Determine if the record includes an `external_identity`. If provided, verify its `cert_chain_der` up to the root matched by `root_fingerprint`. The root MUST be found in the verifier's `trusted_external_fingerprints` list. 
     > **Lukuroot Exception**: The primary LukuID Root CA is implicitly trusted as an external identity root ONLY if the leaf certificate contains OID `1.3.6.1.4.1.65432.1.4` (or includes it in Certificate Policies).
 
-    A verifier MUST NOT trust an `external_identity` solely because a chain parses successfully; the root fingerprint MUST match an explicitly trusted external root or the Lukuroot exception rule. Then, verify the `external_identity.signature` using the leaf public key against the expected payload string (e.g., `checksum:merkle:endorser_id`, `lat:lng:endorser_id`, or `event:status:context_ref:endorser_id`). This is used for endorsements such as vet cards, API signers, Apple App Attest, Google platform attestations, or operator custody checkpoints.
+    A verifier MUST NOT trust an `external_identity` solely because a chain parses successfully; the root fingerprint MUST match an explicitly trusted external root or the Lukuroot exception rule. Then, verify the `external_identity.signature` using the leaf public key against the expected payload string (e.g., `checksum:merkle:endorser_id`, `lat:lng:endorser_id`, or `context_ref:event:status:endorser_id`). This is used for endorsements such as vet cards, API signers, Apple App Attest, Google platform attestations, or operator custody checkpoints.
 *   If `parent_id` is present, verify that it exists in the ledger. If it is absent, treat the record as a standalone attested auxiliary record.
 *   **Hashing Standard**: All `checksum`, `blocks_hash`, and `merkle_root` fields MUST use **SHA-256**.
 *   For physical attachments, the auditor MUST resolve the file path using the first two hex chunks (2 chars each) of the checksum (e.g., a file with hash `a1b2c3d4...` is located at `attachments/a1/b2/a1b2c3d4...`). Verify this physical file matches the `checksum` in the attachment record.
