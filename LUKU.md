@@ -243,7 +243,7 @@ A verifier that encounters a `profile` value it does not recognize MUST treat th
 
 ##### Profile: `animal` (e.g., Animal Reader)
 
-Profile-specific fields, alphabetical: `protocol, scan_version, score_auth, score_bio, score_env, tag_id, temperature_c`.
+Profile-specific fields, alphabetical: `protocol, scan_version, tag_id, temperature_c`.
 
 ```json
 {
@@ -271,7 +271,7 @@ Profile-specific fields, alphabetical: `protocol, scan_version, score_auth, scor
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "sha256_of_factory_dac",
-      "canonical_string": "LUK-1005-EU:base64_device_public_key:scan:LUKUID-1770823456-4501-981098109810981:4501:1770823456:120000000:animal:marketplace_challenge_token_xyz:AR-1.5.0:FDX-B:1.0.0:100:95:90:981098109810981:38.50:38.50,45.00,-65.00,12.00,5.00,120.00,2.00,3300.00,10.00,11.00,1.00,2000.00,50.00,1.20,1.00,5.00,-2.00,0.00:base64_previous_record_signature",
+      "canonical_string": "LUK-1005-EU:base64_device_public_key:scan:LUKUID-1770823456-4501-981098109810981:4501:1770823456:120000000:animal:marketplace_challenge_token_xyz:AR-1.5.0:FDX-B:1.0.0:981098109810981:38.50:38.50,45.00,-65.00,12.00,5.00,120.00,2.00,3300.00,10.00,11.00,1.00,2000.00,50.00,1.20,1.00,5.00,-2.00,0.00:base64_previous_record_signature",
       "payload": {
         "ctr": 4501,
         "timestamp_utc": 1770823456,
@@ -282,9 +282,6 @@ Profile-specific fields, alphabetical: `protocol, scan_version, score_auth, scor
         "profile": "animal",
         "protocol": "FDX-B",
         "scan_version": "1.0.0",
-        "score_auth": 100,
-        "score_bio": 95,
-        "score_env": 90,
         "tag_id": "981098109810981",
         "temperature_c": 38.5,
         "metrics": [38.5, 45, -65, 12, 5, 120, 2, 3300, 10, 11, 1, 2000, 50, 1.2, 1, 5, -2, 0]
@@ -309,7 +306,6 @@ Profile-specific fields, alphabetical: `protocol, scan_version, score_auth, scor
 
 *   **tag_id**: The scanned transponder/chip identifier (distinct from the record's own `id`).
 *   **protocol**: The transponder encoding standard (e.g. `FDX-B` per ISO 11784/11785).
-*   **score_bio / score_auth / score_env**: Hardware-internal quality scores for the biological signal, anti-spoof/anti-clone authentication, and ambient read conditions of that scan.
 *   **metrics**: Profile-defined array of raw analog/diagnostic values for fraud detection and environmental context; its element meaning is defined per profile, not per archive.
 
 ##### Profile: `access` (e.g., door/access controller)
