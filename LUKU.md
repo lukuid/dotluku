@@ -66,7 +66,7 @@ The `platform` type is opportunistic additional evidence. It identifies the plat
 
 The `authority` type is reserved for future trusted-party endorsements (including LukuID, customer, government, registry, and TSA authorities). It MAY define `alg`, `key_id`, `root_fingerprint`, `certificate_chain`, and `signature` fields. This version defines no authority signing or trust configuration flow; implementations MUST NOT treat an authority seal as trusted without a separately defined trust policy.
 
-All seal types sign only the canonical archive payload above. Platform metadata is not part of the signed commitment unless a platform signature format requires it to prevent ambiguity. A valid archive requires at least one valid self seal. Invalid or malformed seals are verification failures; a supported platform seal that fails validation is a verification failure. Platform seals are additional evidence and are not a baseline validity requirement. All archive verification MUST be possible offline, without network calls.
+All seal types sign only the canonical archive payload above. Platform security claims MUST be cryptographically derived from the platform attestation or otherwise authenticated by the platform signature. Unauthenticated metadata MUST NOT be used to make trust or security claims. A valid archive requires at least one valid self seal. Invalid or malformed seals are verification failures; a supported platform seal that fails validation is a verification failure. Platform seals are additional evidence and are not a baseline validity requirement. All archive verification MUST be possible offline, without network calls.
 
 **Attachment Content Addressing:** Files stored within the `attachments/` directory do **not** use file extensions. They are strictly content-addressed by their SHA-256 hash to naturally deduplicate identical files across multiple scans. When an auditor's viewer extracts or renders an attachment, it MUST determine how to handle the file by reading the authoritative `mime` and `title` fields securely bound inside the corresponding `AttachmentRecord` in the NDJSON ledger.
 
@@ -88,6 +88,8 @@ The `manifest.json` provides high-level context for the viewer and acts as the *
 ```
 
 **Archive Version Compatibility:** Writers SHOULD emit the full semantic version string (for example `1.0.0`). Verifiers SHOULD continue to accept the legacy archive-level value `1.0` as equivalent to `1.0.0` for backward compatibility with previously exported evidence packages.
+
+**Seal adoption rule:** `seals.json` was introduced as a mandatory conformance requirement within protocol `1.0.0`. Implementations predating this requirement may parse otherwise-valid historical `1.0.0` archives without seals, but current strict conformance requires `seals.json` and at least one valid self seal. A viewer MUST identify a historical archive without seals as nonconformant under the current verification profile; it MUST NOT silently report full verification success.
 
 The exporter generates a `manifest.sig` by signing the `manifest.json`. Because `manifest.json` contains the exact SHA-256 `blocks_hash` of the ledger, a single signature secures both the metadata (preventing version downgrade attacks) and the entire evidence ledger.
 
@@ -818,7 +820,7 @@ When a Forensic Viewer opens a file, it MUST perform a Version Gatekeeper check 
 Before checking cryptographic signatures, the viewer MUST ensure the file itself is not corrupted or truncated:
 *   **ZIP Validation**: Verify the file is a structurally valid ZIP archive without corrupted central directory records or CRC errors.
 *   **Magic Number**: Read the first file entry in the archive. It MUST be named `mimetype`, be stored uncompressed, and contain the exact string `application/vnd.lukuid.package+zip`.
-*   **Required Files**: Ensure `manifest.json`, `manifest.sig`, and `blocks.jsonl` exist and can be completely extracted.
+*   **Required Files**: Ensure `manifest.json`, `manifest.sig`, `blocks.jsonl`, and `seals.json` exist and can be completely extracted.
 
 ### 2. Global Archive Ledger Integrity Check
 *   Hash the `blocks.jsonl` file (SHA-256) and verify it matches the `blocks_hash` in `manifest.json`.
@@ -828,6 +830,13 @@ Before checking cryptographic signatures, the viewer MUST ensure the file itself
 *   Recompute the canonical block string in the required field order (`block_id:timestamp_utc:previous_block_hash:device_id:public_key:attestation_root_fingerprint:heartbeat_root_fingerprint:batch_hash`) using the standard canonical serialization rules.
 *   Compare the recomputed canonical block string to the stored `block_canonical_string`. If they differ, reject the block.
 *   Recompute `block_hash` as `SHA-256(UTF-8(block_canonical_string))`, and reject the block if the stored `block_hash` differs.
+
+### 2a. Archive Seal Verification
+*   Hash the exact extracted bytes of `manifest.json` with SHA-256 and compare the lowercase hexadecimal result to `seals.json.manifest_hash.value`.
+*   Construct the canonical archive seal payload for each seal using that digest and that seal's `created_at_utc`.
+*   Require at least one valid ML-DSA-65 `self` signature and reject any malformed or invalid self seal.
+*   Verify every supported `platform` seal's signature, attestation chain, pinned offline root, and hardware security properties. Report unsupported platform seals separately and never infer a hardware claim from unauthenticated metadata. The absence of a platform seal is not a verification error.
+*   Treat `authority` seals as reserved until an authority trust policy is defined. Offline verification MUST NOT claim current revocation freshness.
 
 ### 3. Root of Trust & Chain Validation
 *   Compare root fingerprints against the LukuID Offline Root (ML-DSA-65).
@@ -887,9 +896,9 @@ If these checks fail, the verifier MUST mark the record as invalid or high-risk 
 ---
 
 ## 🧩 Merging and Multi-Device Evidence
-`.luku` archives are highly composable. Multiple `.luku` files can be merged by appending blocks chronologically and re-signing the new `manifest.json`.
+`.luku` archives are highly composable. Multiple `.luku` files can be merged by appending blocks chronologically, computing a new `blocks_hash`, generating a new `manifest.json` and `manifest.sig`, and generating a new mandatory self seal in a new `seals.json`.
 
-Because `manifest.sig` seals the `blocks_hash`, the exported `.luku` file is effectively Read-Only. If an application needs to append new blocks over time, it MUST generate a new `manifest.json` and a new `manifest.sig` for the updated ledger.
+Because `manifest.sig` seals the `blocks_hash` and `seals.json` seals the manifest commitment, the exported `.luku` file is effectively Read-Only. If an application needs to append new blocks over time, it MUST generate a new `manifest.json`, a new `manifest.sig`, and a new `seals.json` for the updated ledger. Old seals attest the prior manifest and MUST NOT be copied into the merged archive.
 
 ---
 
@@ -902,7 +911,8 @@ Because `manifest.sig` seals the `blocks_hash`, the exported `.luku` file is eff
 | **Clock Winding** | Prevented by `last_sync_utc` anchor and `SLAC` validity bounds. |
 | **Identity Spoofing** | Prevented by `DAC` chain verification back to ML-DSA-65 Root. |
 | **Large File Tamper** | Prevented by `checksum` or `merkle_root` binding in the signed manifest. |
-| **Export Tampering** | Prevented by the append-only block ledger and `manifest.sig`. |
+| **Export Tampering** | Detected by the append-only block ledger, `manifest.sig`, and the mandatory archive self seal. |
+| **Post-Quantum Archive Integrity** | The mandatory ML-DSA-65 self seal binds the archive manifest commitment using a post-quantum signature. |
 
 ## Evidence Interpretation
 
@@ -913,7 +923,7 @@ Because `manifest.sig` seals the `blocks_hash`, the exported `.luku` file is eff
 | Origin | The record was signed by the device identity referenced in the evidence chain. |
 | Integrity | The signed payload has not been altered since it was signed. |
 | Continuity | Native device records (scan, environment, biometric) fit into the signed history of that device through `previous_signature`, `ctr`, and block linkage checks. Auxiliary attested records (attachment, location, custody) may be linked to parent evidence but do not advance native device continuity state. |
-| Archive Integrity | The exported evidence package has not been modified after creation if `manifest.sig`, `blocks_hash`, and ZIP structure all verify. |
+| Archive Integrity | The exported evidence package has not been modified after creation if `manifest.sig`, `blocks_hash`, the mandatory ML-DSA-65 self seal over the manifest commitment, and ZIP structure all verify. `manifest.sig` provides the existing archive signature; the self seal adds post-quantum archive integrity. |
 | Device Trust Context | The record can be evaluated against the declared attestation roots, certificate chains, and trust state. |
 | Attachment Binding | Attached files or endorsements are cryptographically linked to the parent record through signed checksums and identifiers. |
 | Location Binding | A location record is cryptographically tied to the parent record and signed payload when present. |
