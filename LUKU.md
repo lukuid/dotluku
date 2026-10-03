@@ -42,11 +42,31 @@ evidence.luku/
 ├── manifest.json         # Generic metadata about the archive (version, blocks_hash, etc.)
 ├── manifest.sig          # Global signature of manifest.json (seals metadata and the blocks_hash)
 ├── blocks.jsonl          # NDJSON append-only ledger containing the archive blocks
+├── seals.json            # Required archive-level self seal and optional offline platform seals
 └── attachments/          # Directory containing referenced files
     └── [aa]/             # First 2 chars of SHA-256 hash
         └── [bb]/         # Next 2 chars of SHA-256 hash
-            └── [aabbcc...] # Full SHA-256 named file (NO extension)
+    └── [aabbcc...] # Full SHA-256 named file (NO extension)
 ```
+
+## Archive seals (`seals.json`)
+
+`seals.json` is the only additional required root-level file. It is JSON with `version: 1`, a `manifest_hash` object (`alg: "SHA-256"`, `value`: lowercase hexadecimal), and a non-empty `seals` array. `manifest_hash.value` MUST equal SHA-256 of the exact, unmodified bytes of `manifest.json`. `seals.json` is not included in that digest. Every seal signs the same UTF-8 payload, with LF (`0x0A`) separators and no trailing LF:
+
+```text
+LUKUID-ARCHIVE-SEAL-V1
+manifest_hash_alg=SHA-256
+manifest_hash=<lowercase hexadecimal SHA-256>
+created_at_utc=<base-10 Unix UTC seconds, no sign or leading zeroes except 0>
+```
+
+Each seal object MUST have an integer `created_at_utc` and `type`. The `self` type MUST occur at least once and MUST have `alg: "ML-DSA-65"`, Base64 `public_key`, and Base64 `signature`. It is generated locally and proves only that the holder of the corresponding private key signed this manifest commitment; it makes no trusted identity claim. The timestamp is exporter asserted. The private key MUST NOT be included in the archive. A verifier MUST validate the key and signature cryptographically.
+
+The `platform` type is opportunistic additional evidence. It identifies the platform and algorithm and carries the public verification material, signature and any certificate or attestation chain and metadata required by that platform's offline verifier. Exporters MAY include supported platform seals; their absence MUST NOT invalidate an archive and their creation failure MUST NOT fail export. A verifier MUST validate every supported platform seal's signature, applicable attestation properties, and chain against its bundled or pinned offline trust roots. An unrecognized platform or algorithm is reported as unsupported, not as verified. Platform seals do not establish human identity. Offline verification MUST NOT claim current revocation freshness.
+
+The `authority` type is reserved for future trusted-party endorsements (including LukuID, customer, government, registry, and TSA authorities). It MAY define `alg`, `key_id`, `root_fingerprint`, `certificate_chain`, and `signature` fields. This version defines no authority signing or trust configuration flow; implementations MUST NOT treat an authority seal as trusted without a separately defined trust policy.
+
+All seal types sign only the canonical archive payload above. Platform metadata is not part of the signed commitment unless a platform signature format requires it to prevent ambiguity. A valid archive requires at least one valid self seal. Invalid or malformed seals are verification failures; a supported platform seal that fails validation is a verification failure. Platform seals are additional evidence and are not a baseline validity requirement. All archive verification MUST be possible offline, without network calls.
 
 **Attachment Content Addressing:** Files stored within the `attachments/` directory do **not** use file extensions. They are strictly content-addressed by their SHA-256 hash to naturally deduplicate identical files across multiple scans. When an auditor's viewer extracts or renders an attachment, it MUST determine how to handle the file by reading the authoritative `mime` and `title` fields securely bound inside the corresponding `AttachmentRecord` in the NDJSON ledger.
 
