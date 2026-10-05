@@ -19,9 +19,9 @@ A verifier does not need live access to the LukuID API to check a `.luku` file. 
 
 In plain terms, a valid `.luku` file shows:
 
-*   which device produced the record
-*   what was signed
-*   when it was signed under the protocol's trusted synchronization model
+*   which device produced a device-originated record, or which provider/authority an external verification record's preserved evidence traces to
+*   what was signed, or — for an external verification record with no device or collector signature — what was cryptographically committed
+*   when it was signed under the protocol's trusted synchronization model (device-originated records), or when an external check was performed (`verification` records)
 *   whether the record fits correctly into that device's signed sequence, or is contextually linked to parent evidence where applicable
 *   whether the archive or attached files were changed after export
 *   whether the trust roots and certificate chains match the expected authorities
@@ -40,7 +40,7 @@ A `.luku` package is a standard ZIP archive but MUST contain the `mimetype` file
 evidence.luku/
 ├── mimetype              # Contains "application/vnd.lukuid.package+zip" (uncompressed)
 ├── manifest.json         # Generic metadata about the archive (version, blocks_hash, etc.)
-├── manifest.sig          # Global signature of manifest.json (seals metadata and the blocks_hash)
+├── manifest.sig          # Ed25519 signature of manifest.json's exact raw bytes (see "manifest.sig" below)
 ├── blocks.jsonl          # NDJSON append-only ledger containing the archive blocks
 ├── seals.json            # Required archive-level self seal and optional offline platform seals
 └── attachments/          # Directory containing referenced files
@@ -97,7 +97,8 @@ The `manifest.json` provides high-level context for the viewer and acts as the *
   "created_at_utc": 1770825000,
   "description": "Exported field scans for transit.",
   "blocks_hash": "sha256_hex_hash_of_blocks.jsonl_file",
-  "native_continuity_gap_seconds": 3600
+  "native_continuity_gap_seconds": 3600,
+  "exporter_public_key": "base64_raw_32_byte_ed25519_exporter_public_key"
 }
 ```
 
@@ -105,7 +106,16 @@ The `manifest.json` provides high-level context for the viewer and acts as the *
 
 **Seal adoption rule:** `seals.json` was introduced as a mandatory conformance requirement within protocol `1.0.0`. Implementations predating this requirement may parse otherwise-valid historical `1.0.0` archives without seals, but current strict conformance requires `seals.json` and at least one valid self seal. A viewer MUST identify a historical archive without seals as nonconformant under the current verification profile; it MUST NOT silently report full verification success.
 
-The exporter generates a `manifest.sig` by signing the `manifest.json`. Because `manifest.json` contains the exact SHA-256 `blocks_hash` of the ledger, a single signature secures both the metadata (preventing version downgrade attacks) and the entire evidence ledger.
+**`manifest.sig`:** The exporter generates `manifest.sig` by producing a detached Ed25519 signature over the exact raw UTF-8 bytes of `manifest.json`, then encoding that raw 64-byte signature as standard Base64 text (no line breaks, no whitespace) — that Base64 text is the entire content of the `manifest.sig` file. Because `manifest.json` contains the exact SHA-256 `blocks_hash` of the ledger, this one signature secures both the metadata (preventing version downgrade attacks) and the entire evidence ledger.
+
+The Ed25519 keypair used to produce `manifest.sig` is an **exporter-controlled signing key**, independent of any device/DAC/heartbeat identity. It is self-certifying in the same sense as the mandatory ML-DSA-65 self seal (see "Archive seals (`seals.json`)"): it proves only that the holder of the corresponding private key produced this exact `manifest.json`/`manifest.sig` pair, and makes no trusted identity claim by itself.
+
+`manifest.json` MAY carry the corresponding public key as `exporter_public_key` — standard Base64 encoding of the raw 32-byte Ed25519 public key. An exporter SHOULD publish `exporter_public_key` so that any third party can independently verify `manifest.sig` with no external trust material at all. `manifest.sig` itself MUST always be present and non-empty — this is a structural archive-completeness requirement, independent of whether `exporter_public_key` is published. A verifier's behavior differs based on whether the key is available:
+
+*   If `manifest.json.exporter_public_key` is present, a verifier MUST verify `manifest.sig` against it (Ed25519, over the exact raw bytes of `manifest.json`) and treat a mismatch as a hard archive integrity failure.
+*   If `manifest.json.exporter_public_key` is absent, a verifier cannot cryptographically check `manifest.sig` at all. This MUST be reported as a distinct **warning** ("manifest signature present but not independently checkable offline — no `exporter_public_key` published"), not as a silent pass and not as a hard failure; the presence of the (unverifiable) `manifest.sig` file is still required for structural conformance.
+
+`manifest.sig` and the mandatory self seal are deliberately distinct, complementary mechanisms, not duplicates to be merged: `manifest.sig` is the original classical (Ed25519) commitment, optionally self-describing via `exporter_public_key` in `manifest.json`; the self seal is the mandatory, always-self-describing, post-quantum (ML-DSA-65) commitment in `seals.json`, present unconditionally. The archive's baseline, unconditionally-independently-checkable integrity guarantee rests on the mandatory self seal. `manifest.sig` is an additional classical-crypto commitment that is independently checkable whenever the exporter published `exporter_public_key`, and otherwise still required to be present, but reported as unverifiable rather than verified.
 
 **`native_continuity_gap_seconds`**: An optional field that defines the maximum permitted gap between consecutive `environment` records from the same device. If this gap is exceeded, the verifier MAY (if requested via `require_continuity`) mark the verification as failed. This value is used by readers and SDKs to enforce forensic continuity policies without needing to hardcode thresholds for every product. It is primarily applied to `environment` telemetry to ensure no significant gaps in monitoring occurred.
 
@@ -117,11 +127,15 @@ Each block is appended as a single, newline-terminated JSON object string inside
 
 **Streaming Constraint:** Parsers SHOULD process `blocks.jsonl` incrementally and MAY apply implementation-specific safeguards for very large blocks, but the `.luku` format itself does **not** require a continuous signed chain to be split at a fixed record count. Exporters SHOULD keep a continuous native chain in the same archive block unless they are intentionally starting a new block for a real continuity boundary or another explicitly documented archive operation.
 
-**Single Device Constraint:** Each block MUST reference exactly one device identity. Evidence from multiple devices MUST be represented as separate blocks. This ensures that the attestation and heartbeat certificate chains provided in the block header apply consistently to all records within the batch.
+**Single Device Constraint:** Each block MUST reference exactly one device identity. Evidence from multiple devices MUST be represented as separate blocks. This ensures that the attestation and heartbeat certificate chains provided in the block header apply consistently to all **device-originated** records within the batch (native chain-advancing and device-attested auxiliary records, which are always signed by that one device).
+
+A `verification` record MAY be carried in a block alongside device-originated records, using that block's structural `device` context purely as the containing block's identity. This MUST NOT be interpreted as the verification record itself being issued, signed, or endorsed by that device — a `verification` record's own issuer/trust chain is established solely by its `response` commitment, its OPTIONAL `external_identity`, and its OPTIONAL `collector_attestation` (whose `device_id`, when present, is the actual attesting identity — typically, but not necessarily, the same device as the containing block).
 
 ### Record Envelope Projection
 
-For realtime verification flows, a producer MAY project a single record into a standalone **record envelope** object. A record envelope is not a new record type and does not change the archive schema version. It is simply one forensic record carried together with the minimum trust material required to verify that record independently of archive-level continuity.
+This envelope structure applies to **device-originated records** — native chain-advancing records and device-attested auxiliary records — whose trust model depends on DAC/heartbeat material. It does not apply to `verification` records; see "Standalone `verification` records" at the end of this section for the much simpler shape those use instead.
+
+For realtime verification flows, a producer MAY project a single device-originated record into a standalone **record envelope** object. A record envelope is not a new record type and does not change the archive schema version. It is simply one forensic record carried together with the minimum trust material required to verify that record independently of archive-level continuity.
 
 A conforming record envelope MUST include:
 
@@ -134,7 +148,9 @@ A conforming record envelope MUST include:
 *   when `heartbeat_signature` is present, the envelope MUST also carry the trusted heartbeat timestamp in `identity.last_sync_utc` so the verifier can reconstruct the signed heartbeat payload
 *   exactly one forensic record payload, including the record's top-level native signature material (`type`, `signature`, `previous_signature`, and `canonical_string`) plus any record-local `identity` or `external_identity` fields required by that record type
 
-This projection allows SDKs or ingest pipelines to verify a single record or envelope in realtime before a full `.luku` archive is assembled. Envelope verification proves the cryptographic validity and trust state of that one record, but it does **not** by itself prove archive-level ordering, append-only block continuity, or complete ledger history.
+This projection allows SDKs or ingest pipelines to verify a single device-originated record or envelope in realtime before a full `.luku` archive is assembled. Envelope verification proves the cryptographic validity and trust state of that one record, but it does **not** by itself prove archive-level ordering, append-only block continuity, or complete ledger history.
+
+**Standalone `verification` records.** A `verification` record does not use the device-record envelope above, because it is not inherently device-signed and carries no DAC/heartbeat material of its own. For realtime use outside a full archive, a standalone `verification` record simply carries the `verification` record object itself together with whatever evidence is necessary to verify it independently: the content-addressed `response` bytes (when disclosed) and/or `response.checksum`, and, where present, `external_identity`, `collector_attestation`, and the referenced parent record's `id`/`signature` for contextual linkage (or the full parent record/envelope, if the consumer needs to verify that parent evidence too). No DAC/heartbeat/device envelope wrapper is introduced merely to carry a `verification` record outside a full archive.
 
 **DAC Lifetime Rule:** Device Attestation Certificates identify the device birth/provisioning trust state, not the lifetime of every later record. A verifier MUST validate the DAC chain against the DAC leaf certificate's `notBefore` timestamp plus a 60 minute grace window. A record produced after the DAC leaf or issuer certificate's `notAfter` timestamp remains valid if the DAC chain was valid at that DAC anchor, the DAC has not been revoked through the CRL, the record signature is valid, and the trusted heartbeat/time checks pass. Verifiers MUST NOT use the record timestamp as the DAC certificate validity time.
 
@@ -157,7 +173,7 @@ Each line in `blocks.jsonl` is a block object.
 | `heartbeat_intermediate_der` | String (B64) | Platform Heartbeat Intermediate Certificate. |
 | `heartbeat_root_fingerprint` | String (Hex) | Fingerprint of the Root Heartbeat Authority. |
 | `batch` | Array | Flattened array of record objects included in this block. |
-| `batch_hash` | String (Hex) | Deterministic SHA-256 digest of the ordered record `signature` values from `batch`, computed under the Batch Digest Rule. |
+| `batch_hash` | String (Hex) | Deterministic SHA-256 digest of the ordered record batch binding values from `batch`, computed under the Batch Digest Rule. |
 | `block_canonical_string` | String | Exact raw canonical block string used to produce `block_hash`. Verifiers MUST recompute it and reject the block if this stored value does not match the recomputed value. |
 | `block_hash` | String (Hex) | SHA-256 digest of the canonicalized block content. The canonical block content MUST include `previous_block_hash` and a deterministic digest of the ordered batch contents, ensuring that each block is cryptographically bound to the immediately preceding block and to its own records. |
 
@@ -182,9 +198,15 @@ For block 0, `previous_block_hash` MUST be stored as `null` or an empty string. 
 
 #### Batch Digest Rule
 
-For block integrity purposes, the exporter and verifier MUST compute a deterministic `batch_hash` as follows:
+For block integrity purposes, the exporter and verifier MUST compute a deterministic `batch_hash` from each record's **batch binding value** — the single string each record in `batch` contributes to this digest:
 
-1.  Take the ordered list of record `signature` values exactly as they appear in `batch`.
+*   For a record that carries a top-level `signature` field (every `scan`, `environment`, `biometric`, `attachment`, `location`, and `custody` record, and a `verification` record that carries `collector_attestation`), its batch binding value is that exact `signature` string.
+*   For a record type this specification explicitly permits to omit a top-level `signature` — currently only a `verification` record with no `collector_attestation` (see "Signature and Batch Digest Rule interaction" under "External Verification (`verification`)") — its batch binding value is `response.checksum` instead.
+*   Any future record type that permits an absent top-level `signature` MUST explicitly define its own batch binding value where that record type is defined. A record type that defines no such rule MUST carry a top-level `signature`.
+
+`batch_hash` MUST then be computed as:
+
+1.  Take the ordered list of each record's batch binding value, exactly as the records appear in `batch`.
 2.  Join them with a single colon (`:`).
 3.  Compute SHA-256 over the resulting UTF-8 string.
 
@@ -201,7 +223,7 @@ The `block_canonical_string` field MUST store the exact raw canonical string use
 Each block therefore contains:
 
 *   `previous_block_hash`, referencing the immediately preceding block
-*   `batch_hash`, binding the ordered record signatures in the block
+*   `batch_hash`, binding the ordered record batch binding values in the block
 *   `block_hash`, binding the canonicalized block contents
 
 This creates an append-only hash chain across `blocks.jsonl`. The full ledger is then sealed by `manifest.sig`, which signs the `blocks_hash` of the entire ledger file.
@@ -256,6 +278,8 @@ For the purposes of this protocol, trusted time means:
 *   the synchronization state is reflected in the record's trust material, including the relevant heartbeat identity and timing metadata
 
 Any record generated outside this process MUST be treated as non-conformant to the `.luku` protocol.
+
+**Scope of this requirement.** This trusted-time requirement governs **device-originated records** — native chain-advancing records (`scan`, `environment`, `biometric`) and device-attested auxiliary records (`attachment`, `location`, `custody`) — whose `timestamp_utc` is a device-hardware-asserted value. It does NOT apply to `verification` records. A `verification` record carries no device-asserted `timestamp_utc` of its own trust chain: `checked_at_utc` is the exporter's/collector's own assertion of when the external check was performed, governed by the temporal semantics defined under "External Verification (`verification`)", not by the heartbeat-synchronized device clock model. When a `verification` record carries an OPTIONAL `collector_attestation`, the collector identified by `collector_attestation.device_id` is itself a device-originated signer, and that collector's own trusted-time/heartbeat requirements apply to producing the collector's attestation signature — they are requirements on the collector, not on the `verification` record itself, which remains valid evidence (at the `recorded` or `authority_verified` assurance level) with no `collector_attestation` at all.
 
 ### Conformance Note
 
@@ -321,7 +345,7 @@ Profile-specific fields, alphabetical: `protocol, scan_version, tag_id, temperat
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "sha256_of_factory_dac",
-      "canonical_string": "LUK-1005-EU:base64_device_public_key:scan:LUKUID-1770823456-4501-981098109810981:4501:1770823456:120000000:animal:marketplace_challenge_token_xyz:AR-1.5.0:FDX-B:1.0.0:981098109810981:38.50:38.50,45.00,-65.00,12.00,5.00,120.00,2.00,3300.00,10.00,11.00,1.00,2000.00,50.00,1.20,1.00,5.00,-2.00,0.00:base64_previous_record_signature",
+      "canonical_string": "LUK-1005-EU:base64_device_public_key:scan:LUKUID-1770823456-4501-981098109810981:4501:1770823456:120000000:animal:marketplace_challenge_token_xyz:AR-1.5.0:FDX-B:1.0.0:981098109810981:38.50:38.50,45.00,-65.00,12.00,5.00,120.00,2.00,3300.00,10.00,11.00,1.00,2000.00,50.00,1.20,1.00,5.00,-2.00,0.00:sha256_of_factory_dac",
       "payload": {
         "ctr": 4501,
         "timestamp_utc": 1770823456,
@@ -463,7 +487,7 @@ This keeps `scan` a single, extensible native record type instead of requiring a
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "base64_previous_record_signature",
-      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:0.01:0.02:1.00:85:4.50:12.30:3:271.50:60.169900:24.938400:9:1.25:45.20:350.50:123456:abcd:244:05:LTE:Example Mobile:4g:false:-95:-10.50:-71:18.20:1013.20:false:22.40:false:110:30000:base64_previous_record_signature",
+      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:GC-1.0.2:0.01:0.02:1.00:85:4.50:12.30:3:271.50:60.169900:24.938400:9:1.25:45.20:350.50:123456:abcd:244:05:LTE:Example Mobile:4g:false:-95:-10.50:-71:18.20:1013.20:false:22.40:false:110:30000:base64_previous_record_signature",
       "payload": {
         "ctr": 4502,
         "timestamp_utc": 1770823456,
@@ -520,7 +544,7 @@ This keeps `scan` a single, extensible native record type instead of requiring a
 
 The canonical string for signing an `environment` record follows the general Field Order rule:
 
-Structural prefix: `device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us`
+Structural prefix: `device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us:firmware`
 
 Content fields, alphabetical: `accel_g_x, accel_g_y, accel_g_z, battery_percent, gps_accuracy_m, gps_altitude_m, gps_fix_quality, gps_heading_deg, gps_lat, gps_lng, gps_satellites, gps_speed_mps, humidity_pct, lux, mobile_cell_id, mobile_lac, mobile_mcc, mobile_mnc, mobile_network, mobile_operator, mobile_radio, mobile_roaming, mobile_rsrp_dbm, mobile_rsrq_db, mobile_rssi_dbm, mobile_sinr_db, pressure_hpa, tamper, temp_c, vbus_present, voc_index, voc_raw`
 
@@ -555,6 +579,7 @@ The `biometric` record captures a hardware-secured biometric match event. This r
   "batch": [
     {
       "type": "biometric",
+      "id": "1770823550-4503-bio",
       "version": "1.0.0",
       "alg": "ED25519",
       "signature": "base64_payload_signature",
@@ -563,6 +588,8 @@ The `biometric` record captures a hardware-secured biometric match event. This r
       "payload": {
         "ctr": 4503,
         "timestamp_utc": 1770823550,
+        "uptime_us": 3600001000,
+        "firmware": "GC-1.0.2",
         "modality": "fingerprint",
         "match": true,
         "confidence": 99.8,
@@ -595,7 +622,7 @@ The `biometric` record captures a hardware-secured biometric match event. This r
 
 The canonical string for signing a `biometric` record follows the general Field Order rule:
 
-Structural prefix: `device_id:public_key:biometric:event_id:ctr:timestamp_utc:uptime_us:firmware`
+Structural prefix: `device_id:public_key:biometric:id:ctr:timestamp_utc:uptime_us:firmware`
 
 Content fields, alphabetical: `checks, confidence, match, metrics, modality, template_id_hash`
 
@@ -635,7 +662,7 @@ Attachments are first-class records within the ledger. They MAY link to a parent
       "alg": "ED25519",
       "signature": "base64_attachment_signature_by_device",
       "parent_signature": "base64_linked_parent_signature_or_blank",
-      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:attachment:ATT-999-555:LUKUID-1770823456-4501-981098109810981:1770823465:sha256_hash_of_pdf::application/pdf:EU Veterinary Health Certificate:base64_external_signature",
+      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:attachment:ATT-999-555:LUKUID-1770823456-4501-981098109810981:1770823465:sha256_hash_of_pdf:optional_root_for_large_files:application/pdf:EU Veterinary Health Certificate:base64_external_signature",
       "title": "EU Veterinary Health Certificate",
       "mime": "application/pdf",
       "checksum": "sha256_hash_of_pdf",
@@ -835,7 +862,7 @@ The `verification` record captures the outcome of an external registry, marketpl
 
   "status": "verified",
   "result_code": "registered_owner_confirmed",
-  "result_description": "A matching registry source was found for the supplied microchip identifier.",
+  "result_description": "The supplied microchip identifier matched a registered owner record in the national registry.",
 
   "subject": {
     "type": "animal_microchip",
@@ -907,7 +934,7 @@ For every `verification` response:
 
 **Status model.** `verification` is never modeled as a boolean. `status` MUST be one of the following extensible values: `verified`, `not_verified`, `not_found`, `mismatch`, `expired`, `revoked`, `unavailable`, `unsupported`, `indeterminate`. `result_code` is provider/scheme-specific and MAY encode a more precise outcome (e.g. `registered_owner_confirmed`); `result_code` MUST remain the stable machine-readable outcome identifier used by software logic.
 
-`result_description` is an OPTIONAL, human-readable explanation of that specific `result_code` (e.g. "A matching registry source was found for the supplied microchip identifier."). It MUST be written in English in the serialized `.luku` evidence; applications and viewers MAY translate it for local presentation, but the protocol object itself carries only the English string, not localized variants. `result_description` is descriptive only: it MUST NOT be used to determine `status`, assurance level, trust, or cryptographic validity, and it MUST NOT override or contradict `status`/`result_code` for any verification logic — software MUST decide outcomes from `status`, `result_code`, `scheme`, `provider`, and cryptographic evidence alone. A verifier or viewer MUST be able to render a useful generic UI for an entirely unknown scheme using only `scheme`, `info` (see below), `status`, `result_code`, and `result_description`, without understanding the scheme itself.
+`result_description` is an OPTIONAL, human-readable explanation of that specific `result_code` (e.g. "The supplied microchip identifier matched a registered owner record in the national registry."). It MUST be written in English in the serialized `.luku` evidence; applications and viewers MAY translate it for local presentation, but the protocol object itself carries only the English string, not localized variants. `result_description` is descriptive only: it MUST NOT be used to determine `status`, assurance level, trust, or cryptographic validity, and it MUST NOT override or contradict `status`/`result_code` for any verification logic — software MUST decide outcomes from `status`, `result_code`, `scheme`, `provider`, and cryptographic evidence alone. A verifier or viewer MUST be able to render a useful generic UI for an entirely unknown scheme using only `scheme`, `info` (see below), `status`, `result_code`, and `result_description`, without understanding the scheme itself.
 
 **Scheme model.** `scheme` MUST remain a generic, extensible, dot-namespaced, free-form, machine-readable string identifying the verification domain (e.g. `eu.animal.traceability`, `fi.animal.registry`, `veripet`, `marketplace.identity`, `customs.import`, `calibration.registry`, or an arbitrary third-party value such as `chipndoodle.microchip.lookup`). This specification intentionally defines no EU-specific or scheme-specific record type, and intentionally defines **no central scheme registry** — `scheme` and `provider` are free-form identifiers interpreted by policy, not by this protocol, and a `.luku` implementation MUST NOT require scheme registration or approval before accepting a record. Schemes are decentralized and self-describing: trust comes from the evidence (cryptographic signatures, attestations, and the preserved response), never from a scheme being "known," listed, or registered anywhere.
 
@@ -929,12 +956,34 @@ For every `verification` response:
 
 `info.name` and `info.description` MUST be written in English in the serialized `.luku` evidence; do not put localized variants into the protocol object — applications/viewers MAY translate these strings for their own local UI. `info` is OPTIONAL and purely informational: a verifier MUST treat it as **untrusted descriptive metadata**. A friendly `info.name`/`info.description` MUST NOT create or increase trust in a scheme or provider, and MUST NOT affect cryptographic trust, `status`, assurance level, or whether an unknown scheme is accepted — a scheme MUST remain fully usable, and an unknown scheme MUST remain valid under the normal extensibility rules, whether or not `info` is present.
 
+**Subject model.** `subject` describes the thing, assertion, or evidence target this `verification` record checked. It is OPTIONAL, MUST remain extensible, and — like `scheme` — is interpreted by scheme/provider policy, not by this protocol. `subject` has at minimum a free-form `subject.type` string and, conventionally, a free-form `subject.identifier` string. Two non-exclusive categories of `subject.type` are defined:
+
+*   **Evidence targets** — a `verification` MAY target existing `.luku` evidence directly, using the commitments this protocol already defines, rather than inventing a new range/group abstraction:
+    *   `"record"`: a specific record, identified by `subject.identifier` set to that record's `id` (the common single-record case is better expressed with `parent_id`/`parent_signature` directly — see below).
+    *   `"batch"`: a block's batch of records, identified by `subject.commitment` set to that batch's `batch_hash`.
+    *   `"block"`: a specific block, identified by `subject.commitment` set to that block's `block_hash`.
+    *   `"archive"`: an entire archive/evidence package, identified by `subject.commitment` set to the archive's `manifest_hash.value` (see "Archive seals (`seals.json`)").
+
+    These let a scheme express things like calibration-checking a batch of `environment` records, a cold-chain compliance check across a block, or a check against an entire evidence package, reusing hash commitments this protocol already produces rather than adding new grouping machinery.
+*   **Domain subjects** — a scheme MAY instead (or in addition) define an arbitrary domain-specific `subject.type`, such as `animal_microchip`, `shipment`, `credential`, `calibration_certificate`, or `customs_declaration`, with whatever `subject.identifier` or scheme-defined additional fields it needs. This specification defines no central subject registry and does not enumerate domain subject types — they are free-form, exactly like `scheme` itself.
+
+`parent_id`/`parent_signature` remain the optional contextual-linkage fields for the common single-parent-record case and MUST NOT be overloaded into a generic grouping mechanism. When a `verification` targets a batch/block/archive rather than one record, `parent_id`/`parent_signature` are typically absent (there is no single parent record), and `subject` alone carries the targeting information.
+
 **External authority identity.** `external_identity` reuses the structure already defined for third-party endorsements (`endorser_id`, `root_fingerprint`, `cert_chain_der`, `signature`), but in a `verification` record it represents the **provider's own** signing material, never a LukuID re-signature of the provider's assertion:
 
 *   **Self-describing signed response formats** (JWT/JWS, COSE_Sign1, CMS/PKCS#7, XMLDSig, mdoc, and similar): the signature and certificate/key material are embedded within the preserved response bytes themselves. `external_identity.signature`, `external_identity.cert_chain_der`, and `external_identity.root_fingerprint` MAY be populated as a normalized convenience projection extracted from that artifact, but authoritative verification MUST be performed against the preserved original bytes using that format's own native verification algorithm — never by treating the projected fields as a standalone detached signature over a LukuID-defined payload.
-*   **Plain structured responses with no embedded signature** (e.g. an ordinary JSON body returned over TLS): if the provider or an intermediary trust service separately countersigns the response using an out-of-band key, `external_identity.signature` MUST be the detached signature over the exact payload `{response.checksum}:{scheme}:{provider}:{checked_at_utc}:{status}:{endorser_id}` (fields joined by `:`, empty fields serialized as the empty string per the Canonical Serialization Rules). This is the only case where `external_identity.signature` is a LukuID-defined detached payload rather than a projection of the provider's own artifact signature, and it still represents the provider's or trust service's own assertion, never a LukuID re-signature.
+*   **Plain structured responses with no embedded signature** (e.g. an ordinary JSON body returned over TLS): if the provider or an intermediary trust service separately countersigns the response using an out-of-band key, `external_identity.signature` MUST be the detached signature over the fixed payload defined under "What verification signatures bind" below. This is the only case where `external_identity.signature` is a LukuID-defined detached payload rather than a projection of the provider's own artifact signature, and it still represents the provider's or trust service's own assertion, never a LukuID re-signature.
 
 If the provider artifact already carries its own signature and certificate/credential structure, a conforming verifier verifies that native structure directly rather than relying solely on `external_identity`.
+
+**What verification signatures bind.** Two different mechanisms exist, and they bind different things — a verifier MUST NOT conflate them:
+
+*   **Provider-native signed artifact.** When the provider returns a self-describing signed format (JWS/COSE/CMS/XMLDSig/mdoc/etc.), that preserved original artifact remains authoritative and its own native signature determines exactly what the provider actually signed. Any `.luku`-normalized field (`status`, `result_code`, `subject`, `valid_from_utc`/`valid_until_utc`, etc.) is at best an interpretation/projection of that artifact. A verifier MUST NOT claim a normalized field is provider-authenticated merely because the overall `.luku` archive verifies (block hashes, seals) — only a scheme adapter that actually parses the provider's native artifact and confirms a given normalized value matches what that artifact asserts may treat that value as provider-authenticated. This protocol does not, and cannot, make LukuID the authority over what a third-party provider's own signature covers.
+*   **Luku-defined detached external signature** (the plain-response sub-case above) and **collector attestation** (below): since here LukuID defines the signed payload itself, it strengthens the binding to cover every semantically important normalized field used for decisions, not just a few. Both signatures MUST sign the same fixed, flattened, colon-joined payload (under the standard Canonical Serialization Rules — empty optional fields serialized as the empty string):
+
+    `{response.checksum}:{scheme}:{provider}:{checked_at_utc}:{status}:{result_code}:{subject_type}:{subject_identifier}:{subject_commitment}:{valid_from_utc}:{valid_until_utc}`
+
+    followed by one more trailing field identifying the signer — `{endorser_id}` for the external-identity detached signature, or `{collector_attestation.device_id}` for the collector attestation (see below). This protocol does not sign arbitrary JSON: `subject` MUST NOT be serialized as a JSON blob into this payload. Instead, per the **Subject canonicalization** rule, it is flattened into exactly three fixed components — `subject_type` (`subject.type`), `subject_identifier` (`subject.identifier`), and `subject_commitment` (`subject.commitment`, the evidence-target hash defined under "Subject model" above) — each empty-string when the corresponding field is absent. No other scheme-defined `subject` fields participate in this binding; a scheme needing stronger binding over its own domain-specific `subject` fields MUST either fold that into `subject.identifier`/`subject.commitment` or rely on the provider's own native signed artifact covering those fields directly.
 
 **Optional collector attestation.** `collector_attestation` is OPTIONAL and used when a trusted LukuID device or approved collector witnessed or collected the verification artifact:
 
@@ -949,15 +998,15 @@ If the provider artifact already carries its own signature and certificate/crede
 }
 ```
 
-Its meaning is strictly "this collector observed or collected this verification artifact in relation to this parent evidence." It MUST NOT be interpreted as "the collector guarantees the external registry assertion is factually correct."
+Its meaning is strictly "this collector observed or collected this verification artifact in relation to this parent evidence." It MUST NOT be interpreted as "the collector guarantees the external registry assertion is factually correct" — it commits to *which artifact and which normalized verification semantics* the collector witnessed, never to the external authority's assertion being objectively true.
 
-`collector_attestation.signature` MUST sign the detached canonical payload:
+`collector_attestation.signature` MUST sign the same fixed payload defined under "What verification signatures bind" above, with the trailing signer field set to `collector_attestation.device_id`:
 
-`verification:{id}:{parent_id}:{parent_signature}:{scheme}:{provider}:{checked_at_utc}:{status}:{response.checksum}`
+`{response.checksum}:{scheme}:{provider}:{checked_at_utc}:{status}:{result_code}:{subject_type}:{subject_identifier}:{subject_commitment}:{valid_from_utc}:{valid_until_utc}:{collector_attestation.device_id}`
 
-constructed under the standard Canonical Serialization Rules (empty optional fields serialized as the empty string between colons). When `collector_attestation` is present, the record's top-level `signature` and `alg` fields MUST equal `collector_attestation.signature` and `collector_attestation.alg` respectively, so the record participates in the Batch Digest Rule exactly like any other record in `batch`.
+constructed under the standard Canonical Serialization Rules (empty optional fields serialized as the empty string between colons). This binds the response commitment and every semantically important normalized verification field the collector is attesting to having observed, while still never binding — and never implying any claim about — whether the external authority's assertion was itself correct. When `collector_attestation` is present, the record's top-level `signature` and `alg` fields MUST equal `collector_attestation.signature` and `collector_attestation.alg` respectively, so the record participates in the Batch Digest Rule exactly like any other record in `batch`.
 
-**Signature and Batch Digest Rule interaction.** Unlike `attachment`, `location`, and `custody`, a `verification` record is not required to be device-signed at all — its integrity is anchored by the content-addressed `response` attachment checksum, the enclosing archive block/ledger hash chain, and (optionally) `collector_attestation` and `external_identity`. When no `collector_attestation` is present and no other device signature is produced, the record carries no top-level `signature` field; for the Batch Digest Rule's ordered list of record `signature` values (see "Batch Digest Rule" above), such a record's contribution MUST be `response.checksum` in place of a signature. This keeps the deterministic `batch_hash` binding for ledger/block integrity without requiring a device signature as a precondition for recording externally-sourced verification evidence.
+**Signature and Batch Digest Rule interaction.** Unlike `attachment`, `location`, and `custody`, a `verification` record is not required to be device-signed at all — its integrity is anchored by the content-addressed `response` attachment checksum, the enclosing archive block/ledger hash chain, and (optionally) `collector_attestation` and `external_identity`. When no `collector_attestation` is present and no other device signature is produced, the record carries no top-level `signature` field; per the Batch Digest Rule (see "Batch Digest Rule" above), such a record's batch binding value is `response.checksum` instead of a signature. This keeps the deterministic `batch_hash` binding for ledger/block integrity without requiring a device signature as a precondition for recording externally-sourced verification evidence.
 
 **Assurance levels.** A verifier exposes assurance levels for `verification` records separately from general archive validity:
 
@@ -996,7 +1045,7 @@ To ensure deterministic signature verification across all SDKs, verifiers, and f
 *   **Floats**: Floating-point numbers MUST be formatted to exactly two decimal places (e.g., `350.50`, `22.40`), using a period (`.`) as the decimal separator. **Exception — geospatial coordinates**: `gps_lat`, `gps_lng`, `lat`, and `lng` MUST be formatted to exactly six decimal places (e.g., `60.169900`, `24.938400`) instead. Two decimal degrees is only ~1.1km of precision, too coarse for forensic location evidence; six decimal places gives sub-meter precision. This is the only field-name-based exception to the two-decimal rule.
 *   **Arrays**: Arrays of strings or numbers MUST be joined by commas (`,`) with NO spaces (e.g., `1,2,3` or `liveness_check,minutiae_valid`). A numeric array's elements MUST each individually follow the Floats rule above (e.g. `38.50,45.00,-65.00`), even where an element's underlying value is a whole number.
 *   **Whitespace**: NO extra whitespace, tabs, or padding is permitted anywhere in the serialized fields.
-*   **Delimiter Escaping**: Colons (`:`) within individual data fields are strictly forbidden by the schema to prevent delimiter collision. If a field intrinsically requires a colon (such as a MAC address), it MUST be sanitized or encoded (e.g., hex without colons) before being added to the payload.
+*   **Delimiter Escaping**: This restriction applies only to a value inserted directly as one component of a colon-delimited canonical payload string (a record's `canonical_string`, a `verification` `collector_attestation` payload, or an `external_identity` detached-signature payload) — such a value MUST NOT itself contain a raw colon (`:`), to prevent delimiter collision. If a field intrinsically requires a colon (such as a MAC address) and must participate directly in such a payload, it MUST be sanitized or encoded (e.g., hex without colons) before being added. This restriction does NOT apply to ordinary descriptive JSON metadata that is never spliced directly into a colon-delimited canonical payload — for example `info.description`, `info.documentation` (which may be an ordinary URL such as `https://example.com/docs`), and `result_description` are free-form text and MAY contain colons normally. Any structured value that does need to participate in a canonical payload (such as `subject`) MUST instead use the deterministic flattened encoding this specification defines for it (see "Subject canonicalization" under "What verification signatures bind") rather than being spliced in as raw, unescaped text.
 
 If a field-specific rule conflicts with a generic serialization rule, the field-specific rule defined by that record schema takes precedence.
 
@@ -1008,10 +1057,14 @@ If a field-specific rule conflicts with a generic serialization rule, the field-
 The protocol uses Semantic Versioning (`Major.Minor.Patch`) inside the `manifest.json` and record payloads.
 
 *   **Major (v1.0.0 -> v2.0.0)**: Breaking changes. The canonical string logic or hashing algorithms changed. Old viewers cannot verify this file.
-*   **Minor (v1.0.0 -> v1.1.0)**: New fields added to the payload (e.g., adding humidity to a temp-only log), or a wholly new record `type` added to `batch` (e.g. `verification` in v1.1.0). Old viewers can still verify the signature but will ignore the new fields or unrecognized record type.
-
-**Unrecognized record types:** A verifier that encounters a `batch` entry with a `type` value it does not recognize MUST treat that record as unverifiable at the record level (its type-specific fields and any type-specific checks are skipped) but MUST still include that record's `signature` field (or its defined placeholder, for a type that permits an absent signature) in the ordered list used for the Batch Digest Rule, so block/ledger integrity checks remain unaffected. An unrecognized record type MUST NOT, by itself, invalidate overall archive verification.
+*   **Minor (v1.0.0 -> v1.1.0)**: New fields added to the payload (e.g., adding humidity to a temp-only log), or a wholly new record `type` added to `batch` (e.g. `verification` in v1.1.0). Old viewers can usually still verify a record's own signature and ignore new fields they don't recognize — but see "Unrecognized record types" below for the precise, and more limited, compatibility guarantee where a new record type changes what the Batch Digest Rule requires.
 *   **Patch (v1.0.0 -> v1.0.1)**: Bug fixes in metadata that don't affect the cryptographic hash.
+
+**Unrecognized record types (honest compatibility statement):** A verifier that encounters a `batch` entry with a `type` value it does not recognize MUST treat that record as unverifiable at the record level — its type-specific fields and semantics are never verifiable by a verifier that doesn't understand them, and an unrecognized record type MUST NOT, by itself, invalidate overall archive verification. Whether that same verifier can still validate **block/ledger integrity** (`batch_hash`/`block_hash`) for a block containing that record is a separate, and more limited, guarantee:
+
+*   A verifier implementing this version (v1.1.0) or later knows the batch binding value rule (see "Batch Digest Rule" above) for every record type this specification defines. It can recompute `batch_hash`/`block_hash` correctly for a block containing any record type defined up through its own supported version.
+*   A verifier CANNOT be assumed to correctly recompute `batch_hash` for a block containing a record type defined by a *future* version it does not implement, unless that future type happens to use a batch binding value the verifier already knows how to derive (e.g. a top-level `signature`). This specification cannot guarantee that for a version it does not define. Such a verifier MUST report that block's ledger integrity as **unverifiable**, not silently "ignore the record and continue" while claiming the block verified.
+*   Concretely: a **pre-v1.1.0 verifier** assumes every record carries a top-level `signature` and has no concept of a batch binding value. Such a verifier encountering a `verification` record with no `collector_attestation` (and therefore no top-level `signature`) will compute a *different* `batch_hash` than the exporter did, because it does not know to substitute `response.checksum`. This is the expected, safe failure mode: the pre-v1.1.0 verifier correctly reports that block's ledger integrity as failed/unverifiable rather than silently reporting success. A `.luku` implementation and its documentation MUST NOT claim that a verifier predating a record type's batch-binding rule can cryptographically verify ledger integrity for a block containing that record type — only that it fails closed (reports failure/unverifiable) rather than failing open (falsely reporting success).
 
 ### 2. The "Handshake" Logic in the Viewer
 When a Forensic Viewer opens a file, it MUST perform a Version Gatekeeper check before rendering:
@@ -1032,9 +1085,9 @@ Before checking cryptographic signatures, the viewer MUST ensure the file itself
 
 ### 2. Global Archive Ledger Integrity Check
 *   Hash the `blocks.jsonl` file (SHA-256) and verify it matches the `blocks_hash` in `manifest.json`.
-*   Verify `manifest.sig` against `manifest.json`.
+*   If `manifest.json.exporter_public_key` is present, verify `manifest.sig` (Ed25519) against it over the exact raw bytes of `manifest.json`, and treat a mismatch as a hard failure. If `exporter_public_key` is absent, report `manifest.sig` as present-but-unverifiable (a warning, not a failure) rather than silently treating it as passed — see "`manifest.sig`" above.
 *   Verify the sequence of blocks in `blocks.jsonl`. For each block $N$, ensure `previous_block_hash` matches the `block_hash` of block $N-1$.
-*   Recompute `batch_hash` for each block from the ordered `batch` record signatures using the Batch Digest Rule, and reject the block if the stored `batch_hash` differs.
+*   Recompute `batch_hash` for each block from the ordered `batch` record batch binding values using the Batch Digest Rule, and reject the block if the stored `batch_hash` differs.
 *   Recompute the canonical block string in the required field order (`block_id:timestamp_utc:previous_block_hash:device_id:public_key:attestation_root_fingerprint:heartbeat_root_fingerprint:batch_hash`) using the standard canonical serialization rules.
 *   Compare the recomputed canonical block string to the stored `block_canonical_string`. If they differ, reject the block.
 *   Recompute `block_hash` as `SHA-256(UTF-8(block_canonical_string))`, and reject the block if the stored `block_hash` differs.
@@ -1054,7 +1107,9 @@ Before checking cryptographic signatures, the viewer MUST ensure the file itself
 *   **Hard-Pinned Roots**: SDKs and viewers MUST ship with the LukuID Offline Root fingerprints hardcoded. The viewer MUST display a massive red warning if a `.luku` file utilizes an "Unknown/External Root" that isn't explicitly green-listed by the auditor.
 
 ### 4. Time Verification Rule
-A conforming verifier MUST verify that the record was generated under a valid heartbeat-backed trust state.
+This step applies to **device-originated records** (native and device-attested auxiliary). A conforming verifier MUST verify that such a record was generated under a valid heartbeat-backed trust state.
+
+`verification` records are exempt from this step for their own `checked_at_utc`, which is not a heartbeat-synchronized device timestamp (see "Scope of this requirement" under "Trusted Time Requirement"); this step still applies to an OPTIONAL `collector_attestation`'s own signer, to the extent the verifier independently validates that collector as a device.
 
 At minimum this includes checking:
 
@@ -1096,7 +1151,7 @@ If these checks fail, the verifier MUST mark the record as invalid or high-risk 
 *   **Optional External Identity**: Determine if the record includes an `external_identity`. If provided, verify its `cert_chain_der` up to the root matched by `root_fingerprint`. The root MUST be found in the verifier's `trusted_external_fingerprints` list. 
     > **Lukuroot Exception**: The primary LukuID Root CA is implicitly trusted as an external identity root ONLY if the leaf certificate contains OID `1.3.6.1.4.1.65432.1.4` (or includes it in Certificate Policies).
 
-    A verifier MUST NOT trust an `external_identity` solely because a chain parses successfully; the root fingerprint MUST match an explicitly trusted external root or the Lukuroot exception rule. Then, verify the `external_identity.signature` using the leaf public key against the expected payload string (e.g., `checksum:merkle:endorser_id`, `lat:lng:endorser_id`, or `context_ref:event:status:endorser_id`). This is used for endorsements such as vet cards, API signers, Apple App Attest, Google platform attestations, or operator custody checkpoints.
+    A verifier MUST NOT trust an `external_identity` solely because a chain parses successfully; the root fingerprint MUST match an explicitly trusted external root or the Lukuroot exception rule. Then, verify the `external_identity.signature` using the leaf public key against the expected payload string (e.g., `checksum:merkle_root:endorser_id`, `lat:lng:endorser_id`, or `context_ref:event:status:endorser_id`). This is used for endorsements such as vet cards, API signers, Apple App Attest, Google platform attestations, or operator custody checkpoints.
 *   If `parent_id` is present, verify that it exists in the ledger. If it is absent, treat the record as a standalone attested auxiliary record.
 *   **Hashing Standard**: All `checksum`, `blocks_hash`, and `merkle_root` fields MUST use **SHA-256**.
 *   For physical attachments, the auditor MUST resolve the file path using the first two hex chunks (2 chars each) of the checksum (e.g., a file with hash `a1b2c3d4...` is located at `attachments/a1/b2/a1b2c3d4...`). Verify this physical file matches the `checksum` in the attachment record.
@@ -1136,7 +1191,7 @@ Because `manifest.sig` seals the `blocks_hash` and `seals.json` seals the manife
 | **Clock Winding** | Prevented by `last_sync_utc` anchor and `SLAC` validity bounds. |
 | **Identity Spoofing** | Prevented by `DAC` chain verification back to ML-DSA-65 Root. |
 | **Large File Tamper** | Prevented by `checksum` or `merkle_root` binding in the signed manifest. |
-| **Export Tampering** | Detected by the append-only block ledger, `manifest.sig`, and the mandatory archive self seal. |
+| **Export Tampering** | Detected by the append-only block ledger and the mandatory archive self seal unconditionally; additionally by `manifest.sig` whenever the exporter published `exporter_public_key`. |
 | **Post-Quantum Archive Integrity** | The mandatory ML-DSA-65 self seal binds the archive manifest commitment using a post-quantum signature. |
 
 ## Evidence Interpretation
@@ -1145,10 +1200,10 @@ Because `manifest.sig` seals the `blocks_hash` and `seals.json` seals the manife
 
 | Area | What it proves |
 | :--- | :--- |
-| Origin | The record was signed by the device identity referenced in the evidence chain. |
-| Integrity | The signed payload has not been altered since it was signed. |
-| Continuity | Native device records (scan, environment, biometric) fit into the signed history of that device through `previous_signature`, `ctr`, and block linkage checks. Auxiliary attested records (attachment, location, custody) may be linked to parent evidence but do not advance native device continuity state. |
-| Archive Integrity | The exported evidence package has not been modified after creation if `manifest.sig`, `blocks_hash`, the mandatory ML-DSA-65 self seal over the manifest commitment, and ZIP structure all verify. `manifest.sig` provides the existing archive signature; the self seal adds post-quantum archive integrity. |
+| Origin | A device-originated record (native or device-attested auxiliary) was signed by the device identity referenced in the evidence chain. An external verification record's origin instead traces to the preserved provider response (`response.checksum`), its optional `external_identity`, and its optional `collector_attestation` — it is not inherently signed by any device. |
+| Integrity | A device-originated record's signed payload has not been altered since it was signed. A `verification` record without its own signature (no `collector_attestation`) instead derives integrity from its `response.checksum` commitment and the enclosing block/ledger hash chain. |
+| Continuity | Native device records (scan, environment, biometric) fit into the signed history of that device through `previous_signature`, `ctr`, and block linkage checks. Auxiliary attested records (attachment, location, custody) and external verification records (`verification`) may be linked to parent evidence via `parent_id`/`parent_signature` but do not advance native device continuity state. |
+| Archive Integrity | The exported evidence package has not been modified after creation if `blocks_hash`, the mandatory ML-DSA-65 self seal over the manifest commitment, and ZIP structure all verify — this baseline guarantee is unconditional and requires no external key material. `manifest.sig` provides an additional classical (Ed25519) archive signature, independently checkable only when the exporter published `manifest.json.exporter_public_key`; when that key is absent, `manifest.sig`'s presence is still required but its cryptographic validity cannot be independently confirmed and MUST be reported as such, not as passed. |
 | Device Trust Context | The record can be evaluated against the declared attestation roots, certificate chains, and trust state. |
 | Attachment Binding | Attached files or endorsements are cryptographically linked to the parent record through signed checksums and identifiers. |
 | Location Binding | A location record is cryptographically tied to the parent record and signed payload when present. |
@@ -1189,8 +1244,7 @@ A successful `.luku` verification means that the evidence package is authentic a
 
 #### What this evidence proves
 
-*   It came from the stated device.
-*   It was signed and linked into the device's history.
+*   A device-originated record came from the stated device, was signed, and was linked into the device's history. An external verification record instead came from the stated provider's preserved response, optionally backed by its own signature and/or a collector's attestation.
 *   The archive has not been changed after export.
 *   Attachments and linked records match their signed references.
 
@@ -1200,6 +1254,7 @@ A successful `.luku` verification means that the evidence package is authentic a
 *   That the device was perfectly calibrated.
 *   That a person acted lawfully or correctly.
 *   That no external tampering ever occurred outside the trust model.
+*   That an external registry/authority assertion captured in a `verification` record was itself correct.
 
 ### Revocation Interpretation
 
