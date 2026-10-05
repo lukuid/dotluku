@@ -821,6 +821,12 @@ The `verification` record captures the outcome of an external registry, marketpl
   "parent_signature": "base64_linked_parent_signature_or_blank",
 
   "scheme": "eu.animal.traceability",
+  "info": {
+    "name": "EU Animal Traceability Check",
+    "description": "Checks whether an animal microchip identifier can be matched to a known national veterinary registry entry.",
+    "version": "1.0",
+    "documentation": "https://example.com/docs"
+  },
   "provider": "FI-NATIONAL-REGISTRY",
 
   "checked_at_utc": 1917400000,
@@ -829,6 +835,7 @@ The `verification` record captures the outcome of an external registry, marketpl
 
   "status": "verified",
   "result_code": "registered_owner_confirmed",
+  "result_description": "A matching registry source was found for the supplied microchip identifier.",
 
   "subject": {
     "type": "animal_microchip",
@@ -898,9 +905,29 @@ For every `verification` response:
 
 **HTTP/provider metadata.** Optional `response` metadata (`status_code`, `content_encoding`, `provider_request_id`, `reference`) MAY be retained to help interpret the original response later. Implementations MUST NOT persist bearer tokens, cookies, API keys, Authorization headers, refresh tokens, or other transport credentials inside a `verification` record, unless a future scheme explicitly defines one of those values as evidence and provides a safe representation for it.
 
-**Status model.** `verification` is never modeled as a boolean. `status` MUST be one of the following extensible values: `verified`, `not_verified`, `not_found`, `mismatch`, `expired`, `revoked`, `unavailable`, `unsupported`, `indeterminate`. `result_code` is provider/scheme-specific and MAY encode a more precise outcome (e.g. `registered_owner_confirmed`).
+**Status model.** `verification` is never modeled as a boolean. `status` MUST be one of the following extensible values: `verified`, `not_verified`, `not_found`, `mismatch`, `expired`, `revoked`, `unavailable`, `unsupported`, `indeterminate`. `result_code` is provider/scheme-specific and MAY encode a more precise outcome (e.g. `registered_owner_confirmed`); `result_code` MUST remain the stable machine-readable outcome identifier used by software logic.
 
-**Scheme model.** `scheme` MUST be a generic, extensible, dot-namespaced string identifying the verification domain (e.g. `eu.animal.traceability`, `fi.animal.registry`, `veripet`, `marketplace.identity`, `customs.import`, `calibration.registry`). This specification intentionally defines no EU-specific or scheme-specific record type — `scheme` and `provider` are free-form identifiers interpreted by policy, not by this protocol.
+`result_description` is an OPTIONAL, human-readable explanation of that specific `result_code` (e.g. "A matching registry source was found for the supplied microchip identifier."). It MUST be written in English in the serialized `.luku` evidence; applications and viewers MAY translate it for local presentation, but the protocol object itself carries only the English string, not localized variants. `result_description` is descriptive only: it MUST NOT be used to determine `status`, assurance level, trust, or cryptographic validity, and it MUST NOT override or contradict `status`/`result_code` for any verification logic — software MUST decide outcomes from `status`, `result_code`, `scheme`, `provider`, and cryptographic evidence alone. A verifier or viewer MUST be able to render a useful generic UI for an entirely unknown scheme using only `scheme`, `info` (see below), `status`, `result_code`, and `result_description`, without understanding the scheme itself.
+
+**Scheme model.** `scheme` MUST remain a generic, extensible, dot-namespaced, free-form, machine-readable string identifying the verification domain (e.g. `eu.animal.traceability`, `fi.animal.registry`, `veripet`, `marketplace.identity`, `customs.import`, `calibration.registry`, or an arbitrary third-party value such as `chipndoodle.microchip.lookup`). This specification intentionally defines no EU-specific or scheme-specific record type, and intentionally defines **no central scheme registry** — `scheme` and `provider` are free-form identifiers interpreted by policy, not by this protocol, and a `.luku` implementation MUST NOT require scheme registration or approval before accepting a record. Schemes are decentralized and self-describing: trust comes from the evidence (cryptographic signatures, attestations, and the preserved response), never from a scheme being "known," listed, or registered anywhere.
+
+`scheme` MAY be accompanied by an OPTIONAL `info` object making that scheme self-describing without any registry lookup:
+
+```json
+"info": {
+  "name": "ChipnDoodle Microchip Lookup",
+  "description": "Checks whether a microchip identifier can be matched to a known registry source.",
+  "version": "1.0",
+  "documentation": "https://example.com/docs"
+}
+```
+
+*   `info.name`: a concise human-readable name for the scheme.
+*   `info.description`: explains what the scheme verifies and, where useful, its scope or limitations.
+*   `info.version`: identifies the semantics/version of the scheme itself — independent of, and unrelated to, the `.luku` protocol version or the record's own `version` field.
+*   `info.documentation`: OPTIONAL; MAY contain a URL to documentation describing the scheme.
+
+`info.name` and `info.description` MUST be written in English in the serialized `.luku` evidence; do not put localized variants into the protocol object — applications/viewers MAY translate these strings for their own local UI. `info` is OPTIONAL and purely informational: a verifier MUST treat it as **untrusted descriptive metadata**. A friendly `info.name`/`info.description` MUST NOT create or increase trust in a scheme or provider, and MUST NOT affect cryptographic trust, `status`, assurance level, or whether an unknown scheme is accepted — a scheme MUST remain fully usable, and an unknown scheme MUST remain valid under the normal extensibility rules, whether or not `info` is present.
 
 **External authority identity.** `external_identity` reuses the structure already defined for third-party endorsements (`endorser_id`, `root_fingerprint`, `cert_chain_der`, `signature`), but in a `verification` record it represents the **provider's own** signing material, never a LukuID re-signature of the provider's assertion:
 
@@ -1154,6 +1181,7 @@ A verifier MUST distinguish between:
 *   trust status of the issuing identity
 *   continuity of the device history
 *   external interpretation of the event in legal, regulatory, or commercial context
+*   descriptive metadata about a `verification` record's scheme or result (`info`, `result_description`) versus the structured, trust-bearing fields that govern verification logic (`status`, `result_code`, `scheme`, `provider`, and the cryptographic evidence itself) — descriptive metadata is never evidence and MUST NOT influence any trust, status, or assurance decision
 
 A successful `.luku` verification means that the evidence package is authentic and intact under the protocol's trust model. It MUST NOT be interpreted as automatic proof of physical truth, legal liability, regulatory compliance, or human intent without considering external facts and applicable domain rules.
 

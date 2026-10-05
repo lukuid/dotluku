@@ -6,6 +6,7 @@
 - Defined the response-preservation rule: hashing the exact original provider response bytes (`response.checksum`) is mandatory, while disclosing those bytes as a content-addressed attachment (and any parsed `response.data`) inside a given archive is an optional, privacy-preserving choice, with explicit `disclosed` / `undisclosed` / `disclosed_mismatch` response-disclosure states
 - Defined the extensible, non-Boolean `status` model, generic `scheme`/`provider` model, optional `collector_attestation`, and `recorded` / `authority_verified` / `authority_verified_and_collector_attested` assurance levels
 - Clarified that archive seals in `seals.json` sign only the archive-level manifest commitment and never carry record-level verification results
+- Added optional, purely informational `verification.info` (self-describing scheme metadata: `name`, `description`, `version`, `documentation`) and optional `verification.result_description`, both English-only in serialized evidence and explicitly untrusted for cryptographic/trust/status/assurance purposes — schemes remain decentralized and self-describing with no central scheme registry
 - Added the External Verification (`verification`) Record Check to the forensic verification workflow
 
 ## 1.0.0
