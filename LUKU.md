@@ -867,17 +867,19 @@ The `verification` record captures the outcome of an external registry, marketpl
 }
 ```
 
-**Critical response-preservation rule.** The authoritative evidence is the exact original byte sequence returned by the provider, never the parsed `response.data` object. For every `verification` response:
+**Critical response-preservation rule.** The authoritative evidence is the exact original byte sequence returned by the provider, never the parsed `response.data` object. Hashing that byte sequence is mandatory; **disclosing** those bytes (and any parsed `response.data`) inside a given `.luku` archive is a separate, OPTIONAL decision left to the exporter for privacy reasons (e.g. a registry response may embed an owner's personal data that a given export should not redistribute). `response.checksum` is therefore always present as a binding commitment to the exact provider response, independent of whether the underlying bytes are included in this archive.
+
+For every `verification` response:
 
 1.  The exact original response body bytes MUST be captured before any JSON parsing, normalization, whitespace change, character decoding/re-encoding, field sorting, canonicalization, decompression transformation, or other application-level rewriting.
-2.  `response.checksum` MUST be the lowercase hexadecimal SHA-256 digest computed directly over those exact bytes.
-3.  Those exact bytes MUST be stored as a content-addressed file inside the existing `attachments/` structure defined under "Archive Structure" — `verification` reuses that single content-addressed blob store rather than introducing a second one.
-4.  The content-addressing rule is unchanged: the attachment filename is the lowercase SHA-256 digest (no extension), placed under `attachments/[first 2 hex chars]/[next 2 hex chars]/[full digest]`.
-5.  `response.checksum` MUST equal that exact attachment file's digest.
-6.  `response.size_bytes` MUST equal the exact stored byte length.
-7.  `response.attachment_path` MUST resolve deterministically from `response.checksum` per the content-addressing rule; implementations MAY derive this path rather than serialize it.
-8.  `response.mime` MUST contain the authoritative media type known for the original response.
-9.  Verification MUST fail if the stored attachment bytes do not reproduce `response.checksum`.
+2.  `response.checksum` MUST be the lowercase hexadecimal SHA-256 digest computed directly over those exact captured bytes, and MUST always be present, whether or not the bytes themselves are disclosed in this archive.
+3.  `response.size_bytes` MUST equal the exact captured byte length and `response.mime` MUST contain the authoritative media type known for the original response; both MUST always be present alongside `response.checksum`, since this metadata does not itself disclose the response content.
+4.  **Disclosure is optional.** An exporter MAY additionally store those exact captured bytes as a content-addressed file inside the existing `attachments/` structure defined under "Archive Structure" — `verification` reuses that single content-addressed blob store rather than introducing a second one. An exporter MAY instead choose to withhold the bytes entirely for privacy, in which case no `attachments/` file exists at that checksum's content address in this archive, and `response.data` MUST also be absent (see "Parsed response data" below — `response.data` is never a disclosure channel that bypasses withholding the raw bytes).
+5.  The content-addressing rule is unchanged: when disclosed, the attachment filename is the lowercase SHA-256 digest (no extension), placed under `attachments/[first 2 hex chars]/[next 2 hex chars]/[full digest]`.
+6.  `response.checksum` MUST equal that exact attachment file's digest whenever the attachment is disclosed in the archive.
+7.  `response.attachment_path` MUST resolve deterministically from `response.checksum` per the content-addressing rule; implementations MAY derive this path rather than serialize it. It is meaningful only when the attachment is actually disclosed.
+8.  Verification MUST fail if an `attachments/` file exists at `response.checksum`'s content address but its bytes do not reproduce that checksum. If no such file exists in the archive, this is not a verification failure — it is the "undisclosed" state described below.
+9.  A verifier MUST distinguish and separately report three response-disclosure states for a `verification` record: **disclosed** (the content-addressed attachment is present in the archive and its bytes reproduce `response.checksum`), **undisclosed** (no attachment exists at that content address — `response.checksum`/`size_bytes`/`mime` remain valid metadata, but the content itself was intentionally withheld), and **disclosed_mismatch** (an attachment exists at that content address but fails to reproduce `response.checksum` — a hard verification failure, never treated as "undisclosed"). This disclosure state is independent of the assurance levels defined below and MUST NOT be collapsed into them.
 
 **Parsed response data (`response.data`).** `response.data` is OPTIONAL but strongly recommended for structured formats such as JSON. Its purpose is developer ergonomics, indexing, and rendering only.
 
@@ -888,8 +890,9 @@ The `verification` record captures the outcome of an external registry, marketpl
 5.  `response.data` MUST NOT be treated as authoritative for cryptographic verification.
 6.  Re-serializing `response.data` is not required to reproduce the original response bytes.
 7.  The exact attachment remains the authoritative historical provider artifact regardless of what `response.data` contains.
-8.  If parsing fails but the response bytes were captured successfully, the original attachment MUST be preserved and `response.data` MAY be absent.
+8.  If parsing fails but the response bytes were captured successfully, the original attachment (when disclosed) MUST be preserved and `response.data` MAY be absent.
 9.  A conforming `verification` record MUST therefore be representable for an unknown or future provider format without understanding its contents — `response.data` is simply omitted in that case.
+10. `response.data` MUST NOT be present unless the exact original bytes are also disclosed as a content-addressed attachment in the same archive (see the "Disclosure is optional" rule above). `response.data` is a convenience projection of the disclosed bytes, never an independent disclosure channel that reveals response content while the underlying bytes are withheld.
 
 **Signed or opaque provider formats.** If a provider returns an externally signed or opaque format — including JWT/JWS, SD-JWT, COSE/COSE_Sign1, CBOR, mdoc, XML/XMLDSig, CMS/PKCS#7, protobuf, an opaque binary token, or a future EUDI Wallet credential format — the exact original bytes MUST be preserved unchanged per the response-preservation rule above, and MUST NOT be translated into a LukuID-native signature format. Provider-native verification MUST operate on the preserved original artifact using that format's own verification algorithm; the preserved artifact and its native signature remain the source of truth. A LukuID verifier MAY expose a normalized interpretation of the result afterward, but that interpretation is never a substitute for the preserved artifact.
 
@@ -933,9 +936,11 @@ constructed under the standard Canonical Serialization Rules (empty optional fie
 
 | Level | Meaning |
 | :--- | :--- |
-| `recorded` | The provider response is preserved and integrity-bound (checksum, size, and content-addressed attachment all verify), but no external authority signature was independently verified. |
-| `authority_verified` | The original provider artifact verifies using its own native trust scheme (e.g. a valid JWS/COSE signature, or a valid `external_identity` chain per the rules above). |
+| `recorded` | `response.checksum`/`size_bytes`/`mime` are present and well-formed, and, when the attachment is disclosed, its bytes are integrity-bound (checksum and size verify) — but no external authority signature was independently verified. This level is reachable in both the **disclosed** and **undisclosed** response-disclosure states. |
+| `authority_verified` | The original provider artifact verifies using its own native trust scheme (e.g. a valid JWS/COSE signature over the disclosed bytes, or a valid `external_identity` chain per the rules above). |
 | `authority_verified_and_collector_attested` | The authority artifact verifies, and the optional trusted `collector_attestation` also verifies. |
+
+Assurance level is independent of, and MUST be reported alongside (not instead of), the response-disclosure state (**disclosed** / **undisclosed** / **disclosed_mismatch**) defined above. Note that `authority_verified` can be reached in the **undisclosed** state when `external_identity` uses the plain-response detached-signature sub-case, since that signature is computed over `response.checksum` and other metadata rather than the full response bytes; it requires the **disclosed** state when authority verification depends on a self-describing signed format (JWS/COSE/etc.) embedded within the response bytes themselves, since that verification needs the actual bytes. A **disclosed_mismatch** response MUST be reported as a verification failure regardless of assurance level.
 
 These assurance levels MUST NOT be collapsed into the general `.luku` archive "valid" result; they are reported alongside it.
 
@@ -1076,10 +1081,10 @@ If these checks fail, the verifier MUST mark the record as invalid or high-risk 
 A conforming verifier processing a `verification` record SHOULD, in order:
 
 1.  Verify the parent evidence first, when `parent_id` is present (e.g. the linked `scan` record), using the normal rules for that record's type.
-2.  Resolve the exact `response` attachment using `response.checksum` and the standard content-addressing rule (`attachments/[first 2 hex chars]/[next 2 hex chars]/[full digest]`).
-3.  Hash the exact resolved attachment bytes with SHA-256 and compare against `response.checksum`. A mismatch is a verification failure for that record.
-4.  Validate that the resolved attachment's byte length equals `response.size_bytes`.
-5.  Parse `response.data` only as a convenience representation when the format is supported; a parse failure MUST NOT invalidate the record as long as steps 2–4 pass.
+2.  Attempt to resolve the `response` attachment using `response.checksum` and the standard content-addressing rule (`attachments/[first 2 hex chars]/[next 2 hex chars]/[full digest]`). If no file exists at that content address, record the disclosure state as **undisclosed** and skip straight to step 9 for this record (this is not a failure).
+3.  If an attachment was resolved, hash its exact bytes with SHA-256 and compare against `response.checksum`. A mismatch is a verification failure for that record (disclosure state **disclosed_mismatch**), never treated as "undisclosed".
+4.  If an attachment was resolved and matched, validate that its byte length equals `response.size_bytes`, and record the disclosure state as **disclosed**.
+5.  Parse `response.data` only as a convenience representation when the format is supported and the attachment was disclosed; a parse failure MUST NOT invalidate the record as long as steps 2–4 pass. `response.data` present without a disclosed attachment is itself malformed per the response-preservation rule.
 6.  When supported, verify the external provider artifact using its own native signature/credential scheme, operating on the preserved original bytes (never on `response.data`) — e.g. verify a JWS/COSE/CMS/XMLDSig signature natively, or verify `external_identity` per the rules above for a plain unsigned response.
 7.  When supported, verify external trust roots/policies applicable to that provider's certificate or credential chain.
 8.  Verify any optional `collector_attestation` separately, over its own canonical payload, independent of step 6.
@@ -1121,7 +1126,7 @@ Because `manifest.sig` seals the `blocks_hash` and `seals.json` seals the manife
 | Attachment Binding | Attached files or endorsements are cryptographically linked to the parent record through signed checksums and identifiers. |
 | Location Binding | A location record is cryptographically tied to the parent record and signed payload when present. |
 | Custody Binding | A custody record is cryptographically tied to its attested checkpoint payload and any linked parent record when present. |
-| External Verification Binding | A `verification` record cryptographically binds the exact original external registry/marketplace/authority response bytes (via content-addressed attachment and checksum) to the stated scheme, provider, check time, and any linked parent record, independently of whether the provider's own signature or an optional collector attestation can be verified. |
+| External Verification Binding | A `verification` record cryptographically commits to the exact original external registry/marketplace/authority response via `response.checksum`, bound to the stated scheme, provider, check time, and any linked parent record — independently of whether the provider's own signature or an optional collector attestation can be verified, and independently of whether the underlying response bytes are disclosed as a content-addressed attachment in this archive (see "Disclosure is optional" under External Verification (`verification`)) or withheld for privacy while the commitment still holds. |
 | Independent Verification | A third party can verify the archive offline using the included data and trusted root fingerprints. |
 
 ### What a `.luku` Record Does Not Prove By Itself
