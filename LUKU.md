@@ -264,7 +264,7 @@ To ensure "Rock Solid" forensic integrity, every record includes:
 
 1.  **Cryptographic Agility (`alg`)**: Every signature block explicitly declares its algorithm (e.g., `ED25519`, `ML-DSA-65`).
 2.  **Monotonic Counter (`ctr`)**: The hardware-locked counter prevents replay. Gaps are expected as the counter increments for various internal events.
-3.  **Genesis Anchoring (`genesis_hash`)**: The first record in a chain includes a hash of the factory-issued Device Attestation Certificate (DAC). The Genesis Record's `previous_signature` is the standard, padded base64 (RFC 4648) of the 32-byte SHA-256 digest of the DAC's DER encoding, in place of a 64-byte predecessor signature; when the record carries `genesis_hash`, it MUST be that same string. A native record whose `previous_signature` is the canonical base64 of exactly 32 bytes is a Genesis Record, whatever its `ctr` (devices consume counter values for enrolment and heartbeat requests before their first record).
+3.  **Genesis Anchoring (`genesis_hash`)**: The first record in a chain is anchored to the device's identity key. The Genesis Record's `previous_signature` is the standard, padded base64 (RFC 4648) of the 32-byte SHA-256 digest of the device's raw 32-byte Ed25519 public key (the `public_key` of the record), in place of a 64-byte predecessor signature; when the record carries `genesis_hash`, it MUST be that same string. The anchor deliberately does not depend on the Device Attestation Certificate (DAC), which can be reissued for the same key without restarting the chain. A native record whose `previous_signature` is the canonical base64 of exactly 32 bytes is a Genesis Record, whatever its `ctr` (devices consume counter values for enrolment and heartbeat requests before their first record).
 4.  **Previous Signature Link**: Native device records (`scan`, `environment`, `biometric`) embed the signature of the chronologically preceding device record. Auxiliary attested records (`attachment`, `location`, `custody`) MAY carry a linked parent signature for context, but they MUST NOT advance the device continuity state or the device counter. External verification records (`verification`) MAY likewise carry a linked `parent_signature` for context, but they MUST NOT advance the device continuity state, MUST NOT consume the device counter, and MUST NOT alter any native record's `previous_signature`; unlike auxiliary attested records, they are not required to carry a device-produced signature at all (see "External Verification (`verification`)").
 
 ## Trusted Time Requirement
@@ -344,12 +344,12 @@ Profile-specific fields, alphabetical: `protocol, scan_version, tag_id, temperat
       "version": "1.0.0",
       "alg": "ED25519",
       "signature": "base64_payload_signature",
-      "previous_signature": "sha256_of_factory_dac",
-      "canonical_string": "LUK-1005-EU:base64_device_public_key:scan:LUKUID-1770823456-4501-981098109810981:4501:1770823456:120000000:animal:marketplace_challenge_token_xyz:AR-1.5.0:FDX-B:1.0.0:981098109810981:38.50:38.50,45.00,-65.00,12.00,5.00,120.00,2.00,3300.00,10.00,11.00,1.00,2000.00,50.00,1.20,1.00,5.00,-2.00,0.00:sha256_of_factory_dac",
+      "previous_signature": "sha256_of_device_public_key",
+      "canonical_string": "LUK-1005-EU:base64_device_public_key:scan:LUKUID-1770823456-4501-981098109810981:4501:1770823456:120000000:animal:marketplace_challenge_token_xyz:AR-1.5.0:FDX-B:1.0.0:981098109810981:38.50:38.50,45.00,-65.00,12.00,5.00,120.00,2.00,3300.00,10.00,11.00,1.00,2000.00,50.00,1.20,1.00,5.00,-2.00,0.00:sha256_of_device_public_key",
       "payload": {
         "ctr": 4501,
         "timestamp_utc": 1770823456,
-        "genesis_hash": "sha256_of_factory_dac",
+        "genesis_hash": "sha256_of_device_public_key",
         "uptime_us": 120000000,
         "nonce": "marketplace_challenge_token_xyz",
         "firmware": "AR-1.5.0",
@@ -491,7 +491,7 @@ This keeps `scan` a single, extensible native record type instead of requiring a
       "payload": {
         "ctr": 4502,
         "timestamp_utc": 1770823456,
-        "genesis_hash": "sha256_of_factory_dac",
+        "genesis_hash": "sha256_of_device_public_key",
         "uptime_us": 3600000000,
         "firmware": "GC-1.0.2",
         "lux": 350.5,
@@ -1132,13 +1132,13 @@ If these checks fail, the verifier MUST mark the record as invalid or high-risk 
 
 *   **Chain Walk (Record Continuity)**: Verifiers must evaluate native device records (`scan`, `environment`, `biometric`) in strict chronological order for each device:
     *   **For the very first record encountered for a device in the archive:**
-        *   If the record is the **Genesis Record** for the device (its `previous_signature` is the canonical base64 of exactly 32 bytes; see Genesis Anchoring), verify that `previous_signature` equals the base64 SHA-256 of the record's DAC DER, and equals `genesis_hash` when present. A Genesis Record without a DAC available in the record or block MUST fail this check.
+        *   If the record is the **Genesis Record** for the device (its `previous_signature` is the canonical base64 of exactly 32 bytes; see Genesis Anchoring), verify that `previous_signature` equals the base64 SHA-256 of the record's raw Ed25519 `public_key`, and equals `genesis_hash` when present. A Genesis Record without a valid 32-byte public key MUST fail this check.
         *   Otherwise (if the archive contains only a slice of history), the `previous_signature` is a **Floating Anchor**; it cannot be verified against a peer record in this archive, but it MUST be preserved for forensic continuity across external evidence packages.
     *   **For all subsequent native records for that device in the archive:**
         *   Verify that `previous_signature` exactly matches the `signature` of the native record immediately preceding it **within the archive**.
 *   **Counter Audit**: Ensure `ctr` values are strictly increasing for native records originating from the same device. For the first record in a slice, the counter provides the starting point for auditing the subsequent sequence.
 *   **Monotonic Clock Check**: Verify that for any given `device_id`, as the native-record `ctr` strictly increases, the `timestamp_utc` MUST also strictly increase or remain equal. Any "backwards" time travel across native records for the same device indicates RTC tampering and MUST trigger a high-severity alert.
-*   **Genesis Check**: Ensure the Genesis Record's `previous_signature` (and `genesis_hash`, when present) is the base64 SHA-256 of the DER `DAC` for the device.
+*   **Genesis Check**: Ensure the Genesis Record's `previous_signature` (and `genesis_hash`, when present) is the base64 SHA-256 of the device's raw Ed25519 public key.
 *   **Auxiliary Attestation Rule**: `attachment`, `location`, and `custody` records are device-signed attestations and MUST NOT be treated as continuity-advancing records for counter or chain-state purposes.
 *   **External Verification Rule**: `verification` records represent externally-sourced registry, marketplace, authority, customs, or compliance evidence. They MUST NOT be treated as continuity-advancing records for counter or chain-state purposes and MUST NOT mutate `previous_signature` on any native record. Unlike `attachment`, `location`, and `custody`, a `verification` record is not required to be device-signed; its integrity instead derives from the content-addressed `response` attachment checksum, the archive block/ledger hash chain, and the optional `collector_attestation` and `external_identity` material described under "External Verification (`verification`)".
 
