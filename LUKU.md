@@ -487,13 +487,12 @@ This keeps `scan` a single, extensible native record type instead of requiring a
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "base64_previous_record_signature",
-      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:GC-1.0.2:0.01:0.02:1.00:85:4.50:12.30:3:271.50:60.169900:24.938400:9:1.25:45.20:350.50:123456:abcd:244:05:LTE:Example Mobile:4g:false:-95:-10.50:-71:18.20:1013.20:false:22.40:false:110:30000:base64_previous_record_signature",
+      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:0.01:0.02:1.00:85:4.50:12.30:3:271.50:60.169900:24.938400:9:1.25:45.20:350.50:123456:abcd:244:05:LTE:Example Mobile:4g:false:-95:-10.50:-71:18.20:1013.20:false:22.40:false:110:30000:base64_previous_record_signature",
       "payload": {
         "ctr": 4502,
         "timestamp_utc": 1770823456,
         "genesis_hash": "sha256_of_device_public_key",
         "uptime_us": 3600000000,
-        "firmware": "GC-1.0.2",
         "lux": 350.5,
         "temp_c": 22.4,
         "humidity_pct": 45.2,
@@ -544,13 +543,15 @@ This keeps `scan` a single, extensible native record type instead of requiring a
 
 The canonical string for signing an `environment` record follows the general Field Order rule:
 
-Structural prefix: `device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us:firmware`
+Structural prefix: `device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us`
 
 Content fields, alphabetical: `accel_g_x, accel_g_y, accel_g_z, battery_percent, gps_accuracy_m, gps_altitude_m, gps_fix_quality, gps_heading_deg, gps_lat, gps_lng, gps_satellites, gps_speed_mps, humidity_pct, lux, mobile_cell_id, mobile_lac, mobile_mcc, mobile_mnc, mobile_network, mobile_operator, mobile_radio, mobile_roaming, mobile_rsrp_dbm, mobile_rsrq_db, mobile_rssi_dbm, mobile_sinr_db, pressure_hpa, tamper, temp_c, vbus_present, voc_index, voc_raw`
 
 Structural suffix: `previous_signature`
 
 If `initial_temp_c` is present, it takes its natural alphabetical position (between `humidity_pct` and `lux`) — no special-case insertion rule is needed. The GPS and mobile canonical slots MUST always be present at their alphabetical position. When a field is unavailable, its canonical component MUST be the empty string.
+
+The `environment` structural prefix carries no `firmware` field: devices do not sign one, so a verifier MUST NOT expect it.
 
 `nonce` is the optional host challenge token for the record (see the `scan` record's `nonce`): a string of 1–31 characters from `A–Z a–z 0–9 - _ . ~ + /` and `=`, never `:`. When the record carries a non-empty `nonce`, it takes its natural alphabetical position as a content field (between `mobile_sinr_db` and `pressure_hpa`); when it is absent or empty, it has no canonical slot, so records made without a challenge keep the layout above. A verifier that requested the challenge MUST check that `payload.nonce` equals the token it issued; the signature binds the nonce to the record, so a record made before the challenge cannot carry it.
 
