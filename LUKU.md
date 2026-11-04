@@ -552,6 +552,8 @@ Structural suffix: `previous_signature`
 
 If `initial_temp_c` is present, it takes its natural alphabetical position (between `humidity_pct` and `lux`) — no special-case insertion rule is needed. The GPS and mobile canonical slots MUST always be present at their alphabetical position. When a field is unavailable, its canonical component MUST be the empty string.
 
+`nonce` is the optional host challenge token for the record (see the `scan` record's `nonce`): a string of 1–31 characters from `A–Z a–z 0–9 - _ . ~ + /` and `=`, never `:`. When the record carries a non-empty `nonce`, it takes its natural alphabetical position as a content field (between `mobile_sinr_db` and `pressure_hpa`); when it is absent or empty, it has no canonical slot, so records made without a challenge keep the layout above. A verifier that requested the challenge MUST check that `payload.nonce` equals the token it issued; the signature binds the nonce to the record, so a record made before the challenge cannot carry it.
+
 #### Biometric Attestation (`biometric`)
 
 The `biometric` record captures a hardware-secured biometric match event. This record type ensures that a biological trait was successfully verified against a local, non-exportable template.
