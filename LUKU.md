@@ -487,12 +487,13 @@ This keeps `scan` a single, extensible native record type instead of requiring a
       "alg": "ED25519",
       "signature": "base64_payload_signature",
       "previous_signature": "base64_previous_record_signature",
-      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:0.01:0.02:1.00:85:4.50:12.30:3:271.50:60.169900:24.938400:9:1.25:45.20:350.50:123456:abcd:244:05:LTE:Example Mobile:4g:false:-95:-10.50:-71:18.20:1013.20:false:22.40:false:110:30000:base64_previous_record_signature",
+      "canonical_string": "GC-2005-EU:base64_device_public_key:environment:1770823456-4502-env:4502:1770823456:3600000000:v1.0.0:0.01:0.02:1.00:85:4.50:12.30:3:271.50:60.169900:24.938400:9:1.25:45.20:350.50:123456:abcd:244:05:LTE:Example Mobile:4g:false:-95:-10.50:-71:18.20:1013.20:false:22.40:false:110:30000:base64_previous_record_signature",
       "payload": {
         "ctr": 4502,
         "timestamp_utc": 1770823456,
         "genesis_hash": "sha256_of_device_public_key",
         "uptime_us": 3600000000,
+        "firmware": "v1.0.0",
         "lux": 350.5,
         "temp_c": 22.4,
         "humidity_pct": 45.2,
@@ -543,7 +544,7 @@ This keeps `scan` a single, extensible native record type instead of requiring a
 
 The canonical string for signing an `environment` record follows the general Field Order rule:
 
-Structural prefix: `device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us`
+Structural prefix: `device_id:public_key:environment:id:ctr:timestamp_utc:uptime_us:firmware`
 
 Content fields, alphabetical: `accel_g_x, accel_g_y, accel_g_z, battery_percent, gps_accuracy_m, gps_altitude_m, gps_fix_quality, gps_heading_deg, gps_lat, gps_lng, gps_satellites, gps_speed_mps, humidity_pct, lux, mobile_cell_id, mobile_lac, mobile_mcc, mobile_mnc, mobile_network, mobile_operator, mobile_radio, mobile_roaming, mobile_rsrp_dbm, mobile_rsrq_db, mobile_rssi_dbm, mobile_sinr_db, pressure_hpa, tamper, temp_c, vbus_present, voc_index, voc_raw`
 
@@ -551,7 +552,7 @@ Structural suffix: `previous_signature`
 
 If `initial_temp_c` is present, it takes its natural alphabetical position (between `humidity_pct` and `lux`) — no special-case insertion rule is needed. The GPS and mobile canonical slots MUST always be present at their alphabetical position. When a field is unavailable, its canonical component MUST be the empty string.
 
-The `environment` structural prefix carries no `firmware` field: devices do not sign one, so a verifier MUST NOT expect it.
+`firmware` is the version of the firmware that produced and signed the record (see "Firmware Binding" under Canonical Serialization Rules).
 
 `nonce` is the optional host challenge token for the record (see the `scan` record's `nonce`): a string of 1–31 characters from `A–Z a–z 0–9 - _ . ~ + /` and `=`, never `:`. When the record carries a non-empty `nonce`, it takes its natural alphabetical position as a content field (between `mobile_sinr_db` and `pressure_hpa`); when it is absent or empty, it has no canonical slot, so records made without a challenge keep the layout above. A verifier that requested the challenge MUST check that `payload.nonce` equals the token it issued; the signature binds the nonce to the record, so a record made before the challenge cannot carry it.
 
@@ -661,11 +662,12 @@ Attachments are first-class records within the ledger. They MAY link to a parent
       "id": "ATT-999-555",
       "parent_id": "LUKUID-1770823456-4501-981098109810981",
       "timestamp_utc": 1770823465,
+      "firmware": "v1.0.0",
       "version": "1.0.0",
       "alg": "ED25519",
       "signature": "base64_attachment_signature_by_device",
       "parent_signature": "base64_linked_parent_signature_or_blank",
-      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:attachment:ATT-999-555:LUKUID-1770823456-4501-981098109810981:1770823465:sha256_hash_of_pdf:optional_root_for_large_files:application/pdf:EU Veterinary Health Certificate:base64_external_signature",
+      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:attachment:ATT-999-555:LUKUID-1770823456-4501-981098109810981:1770823465:v1.0.0:sha256_hash_of_pdf:optional_root_for_large_files:application/pdf:EU Veterinary Health Certificate:base64_external_signature",
       "title": "EU Veterinary Health Certificate",
       "mime": "application/pdf",
       "checksum": "sha256_hash_of_pdf",
@@ -689,7 +691,7 @@ Attachments are first-class records within the ledger. They MAY link to a parent
 
 The canonical string for signing an `attachment` record follows the general Field Order rule:
 
-Structural prefix: `parent_signature:device_id:public_key:attachment:id:parent_id:timestamp_utc`
+Structural prefix: `parent_signature:device_id:public_key:attachment:id:parent_id:timestamp_utc:firmware`
 
 Content fields, alphabetical: `checksum, merkle_root, mime, title`
 
@@ -735,11 +737,12 @@ The `location` record is also produced through the device's `attest` flow. Much 
       "type": "location",
       "parent_id": "LUKUID-1770823456-4501-981098109810981",
       "timestamp_utc": 1770823500,
+      "firmware": "v1.0.0",
       "version": "1.0.0",
       "alg": "ED25519",
       "signature": "base64_location_signature_by_device",
       "parent_signature": "base64_linked_parent_signature_or_blank",
-      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:location:LUKUID-1770823456-4501-981098109810981:1770823500:60.169900:24.938400:base64_external_signature",
+      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:location:LUKUID-1770823456-4501-981098109810981:1770823500:v1.0.0:60.169900:24.938400:base64_external_signature",
       "lat": 60.1699,
       "lng": 24.9384,
       "external_identity": {
@@ -761,7 +764,7 @@ The `location` record is also produced through the device's `attest` flow. Much 
 
 The canonical string for signing a `location` record follows the general Field Order rule:
 
-Structural prefix: `parent_signature:device_id:public_key:location:parent_id:timestamp_utc`
+Structural prefix: `parent_signature:device_id:public_key:location:parent_id:timestamp_utc:firmware`
 
 Content fields, alphabetical: `lat, lng`
 
@@ -796,11 +799,12 @@ The `custody` record is produced through the device's `attest` flow to capture p
       "id": "CUST-1770823650-0001",
       "parent_id": "LUKUID-1770823456-4501-981098109810981",
       "timestamp_utc": 1770823650,
+      "firmware": "v1.0.0",
       "version": "1.0.0",
       "alg": "ED25519",
       "signature": "base64_custody_signature_by_device",
       "parent_signature": "base64_linked_parent_signature_or_blank",
-      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:custody:CUST-1770823650-0001:LUKUID-1770823456-4501-981098109810981:1770823650:shipment-abc-123:handoff:received:base64_external_signature",
+      "canonical_string": "base64_linked_parent_signature_or_blank:LUK-1005-EU:base64_device_public_key:custody:CUST-1770823650-0001:LUKUID-1770823456-4501-981098109810981:1770823650:v1.0.0:shipment-abc-123:handoff:received:base64_external_signature",
       "payload": {
         "event": "handoff",
         "status": "received",
@@ -829,7 +833,7 @@ Suggested constrained values for `payload.status` include `confirmed`, `placed`,
 
 The canonical string for signing a `custody` record follows the general Field Order rule:
 
-Structural prefix: `parent_signature:device_id:public_key:custody:id:parent_id:timestamp_utc`
+Structural prefix: `parent_signature:device_id:public_key:custody:id:parent_id:timestamp_utc:firmware`
 
 Content fields, alphabetical: `context_ref, event, status`
 
@@ -1049,6 +1053,7 @@ To ensure deterministic signature verification across all SDKs, verifiers, and f
 *   **Arrays**: Arrays of strings or numbers MUST be joined by commas (`,`) with NO spaces (e.g., `1,2,3` or `liveness_check,minutiae_valid`). A numeric array's elements MUST each individually follow the Floats rule above (e.g. `38.50,45.00,-65.00`), even where an element's underlying value is a whole number.
 *   **Whitespace**: NO extra whitespace, tabs, or padding is permitted anywhere in the serialized fields.
 *   **Delimiter Escaping**: This restriction applies only to a value inserted directly as one component of a colon-delimited canonical payload string (a record's `canonical_string`, a `verification` `collector_attestation` payload, or an `external_identity` detached-signature payload) — such a value MUST NOT itself contain a raw colon (`:`), to prevent delimiter collision. If a field intrinsically requires a colon (such as a MAC address) and must participate directly in such a payload, it MUST be sanitized or encoded (e.g., hex without colons) before being added. This restriction does NOT apply to ordinary descriptive JSON metadata that is never spliced directly into a colon-delimited canonical payload — for example `info.description`, `info.documentation` (which may be an ordinary URL such as `https://example.com/docs`), and `result_description` are free-form text and MAY contain colons normally. Any structured value that does need to participate in a canonical payload (such as `subject`) MUST instead use the deterministic flattened encoding this specification defines for it (see "Subject canonicalization" under "What verification signatures bind") rather than being spliced in as raw, unescaped text.
+*   **Firmware Binding**: Every device-signed record — the native records (`scan`, `environment`, `biometric`) and the device-attested auxiliary records (`attachment`, `location`, `custody`) — MUST carry `firmware`, the version string of the firmware that produced and signed it (e.g. `v1.0.0`), as the last field of its structural prefix. Native records carry it as `payload.firmware`; auxiliary records carry it as the record-level `firmware` field. A device MUST NOT sign such a record without a non-empty firmware version, and the value MUST NOT contain `:`. A verifier MUST recompute the prefix with the record's own `firmware` value, so a changed `firmware` is a canonical mismatch and the signature binds the version. Compatibility: `environment`, `attachment`, `location` and `custody` records made by firmware from before this rule carry no `firmware`; for those records only, the `firmware` slot is absent from the prefix (not an empty component), so their canonical string keeps the layout they were signed with. Because the signature covers the stored canonical string, the slot cannot be removed from a record that was signed with it.
 
 If a field-specific rule conflicts with a generic serialization rule, the field-specific rule defined by that record schema takes precedence.
 
